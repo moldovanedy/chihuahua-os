@@ -1,0 +1,17 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+multiboot2 = { version = "0.24.0", default-features = false }
+k_lib = { path = "../k_lib" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[lib]
+crate-type = ["staticlib"]
