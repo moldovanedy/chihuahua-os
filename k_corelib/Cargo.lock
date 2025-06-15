@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "k_lib"
+name = "k_corelib"
 version = "0.1.0"

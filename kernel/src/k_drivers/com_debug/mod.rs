@@ -1,4 +1,4 @@
-use k_lib::ports;
+use k_corelib::ports;
 
 const PORT: u32 = 0x3f8; //COM1 interface
 
