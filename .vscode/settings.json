@@ -1,11 +1,13 @@
 {
     "cSpell.words": [
         "Bgrx",
+        "bitmask",
         "cpuid",
         "dogos",
         "kmain",
         "libdog",
         "libm",
+        "LIMINE",
         "nasm",
         "nobits",
         "nomem",
@@ -13,6 +15,7 @@
         "repr",
         "resb",
         "rlib",
+        "uefi",
         "Xrgb"
     ]
 }
