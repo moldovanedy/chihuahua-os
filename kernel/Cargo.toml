@@ -14,3 +14,6 @@ panic = "abort"
 
 [lib]
 crate-type = ["staticlib"]
+test = false
+doctest = false
+bench = false

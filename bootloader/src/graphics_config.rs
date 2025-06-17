@@ -1,7 +1,8 @@
+use k_corelib::boot_info::FramebufferData;
 use uefi::{
     Handle,
     boot::{self},
-    proto::console::gop::{self, GraphicsOutput, PixelFormat},
+    proto::console::gop::{self, FrameBuffer, GraphicsOutput, PixelFormat},
 };
 
 pub fn set_appropriate_framebuffer(pref_width: u32, pref_height: u32) -> Option<FramebufferData> {
@@ -52,82 +53,74 @@ pub fn set_appropriate_framebuffer(pref_width: u32, pref_height: u32) -> Option<
         return None;
     }
 
-    return FramebufferData::from_mode_info(best_mode_info);
+    return fb_data_from_mode_info(best_mode_info, gop.frame_buffer());
 }
 
 fn abs(val: i32) -> i32 {
     if val < 0 { -val } else { val }
 }
 
-pub struct FramebufferData {
-    width: u32,
-    height: u32,
-    red_bitmask: u32,
-    green_bitmask: u32,
-    blue_bitmask: u32,
-}
+pub fn fb_data_from_mode_info(
+    mode_info: gop::ModeInfo,
+    mut fb: FrameBuffer,
+) -> Option<FramebufferData> {
+    let mut red_mask: u32 = 0;
+    let mut green_mask: u32 = 0;
+    let mut blue_mask: u32 = 0;
+    let mut bits_per_pixel: u8 = 0;
 
-impl FramebufferData {
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-
-    pub fn red_bitmask(&self) -> u32 {
-        self.red_bitmask
-    }
-
-    pub fn green_bitmask(&self) -> u32 {
-        self.green_bitmask
-    }
-
-    pub fn blue_bitmask(&self) -> u32 {
-        self.blue_bitmask
-    }
-
-    pub fn from_mode_info(mode_info: gop::ModeInfo) -> Option<Self> {
-        let mut red_mask: u32 = 0;
-        let mut green_mask: u32 = 0;
-        let mut blue_mask: u32 = 0;
-
-        match mode_info.pixel_format() {
-            PixelFormat::Bgr => {
-                red_mask = 0xff;
-                green_mask = 0xff_00;
-                blue_mask = 0xff_00_00;
+    match mode_info.pixel_format() {
+        PixelFormat::Bgr => {
+            red_mask = 0xff;
+            green_mask = 0xff_00;
+            blue_mask = 0xff_00_00;
+            bits_per_pixel = 32;
+        }
+        PixelFormat::Rgb => {
+            red_mask = 0xff_00_00;
+            green_mask = 0xff_00;
+            blue_mask = 0xff;
+            bits_per_pixel = 32;
+        }
+        PixelFormat::Bitmask => {
+            let mask: Option<gop::PixelBitmask> = mode_info.pixel_bitmask();
+            if mask.is_none() {
+                return None;
             }
-            PixelFormat::Rgb => {
-                red_mask = 0xff_00_00;
-                green_mask = 0xff_00;
-                blue_mask = 0xff;
-            }
-            PixelFormat::Bitmask => {
-                let mask: Option<gop::PixelBitmask> = mode_info.pixel_bitmask();
-                if mask.is_none() {
-                    return None;
+
+            let mask: gop::PixelBitmask = mask.unwrap();
+            red_mask = mask.red;
+            green_mask = mask.green;
+            blue_mask = mask.blue;
+
+            //get BPP
+            for mask in [mask.red, mask.green, mask.blue, mask.reserved] {
+                let mut bit_pos: u8 = 31;
+                while bit_pos >= 0 && bit_pos > bits_per_pixel {
+                    if mask & (1 << bit_pos) != 0 {
+                        bits_per_pixel = bit_pos + 1;
+                        break;
+                    }
+
+                    bit_pos -= 1;
                 }
-
-                let mask: gop::PixelBitmask = mask.unwrap();
-                red_mask = mask.red;
-                green_mask = mask.green;
-                blue_mask = mask.blue;
             }
-            _ => {}
         }
-
-        if red_mask == 0 || green_mask == 0 || blue_mask == 0 {
-            return None;
-        }
-
-        return Some(FramebufferData {
-            width: mode_info.resolution().0 as u32,
-            height: mode_info.resolution().1 as u32,
-            red_bitmask: red_mask,
-            green_bitmask: green_mask,
-            blue_bitmask: blue_mask,
-        });
+        _ => {}
     }
+
+    if red_mask == 0 || green_mask == 0 || blue_mask == 0 {
+        return None;
+    }
+
+    return Some(FramebufferData::new(
+        fb.as_mut_ptr() as u64,
+        mode_info.resolution().0 as u32,
+        mode_info.resolution().1 as u32,
+        mode_info.stride() as u32,
+        bits_per_pixel,
+        red_mask,
+        green_mask,
+        blue_mask,
+    ));
 }

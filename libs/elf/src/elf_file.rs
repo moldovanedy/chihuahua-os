@@ -1,0 +1,23 @@
+pub struct ElfFile {
+    e_ident_mag: u32,
+    e_ident_class: u8,
+    e_ident_data: u8,
+    e_ident_version: u8,
+    e_ident_osabi: u8,
+    e_ident_abiversion: u8,
+    e_ident_pad: [u8; 7],
+
+    e_type: u16,
+    e_machine: u16,
+    e_version: u32,
+    e_entry: u64,
+    e_phoff: u64,
+    e_shoff: u64,
+    e_flags: u32,
+    e_ehsize: u16,
+    e_phentsize: u16,
+    e_phnum: u16,
+    e_shentsize: u16,
+    e_shnum: u16,
+    e_shstrndx: u16,
+}

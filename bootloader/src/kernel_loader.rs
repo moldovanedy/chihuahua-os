@@ -1,51 +1,39 @@
-use log::error;
-use uefi::boot::image_handle;
-use uefi::{
-    prelude::*,
-    proto::media::{
-        file::{self, File, FileAttribute},
-        fs,
-    },
+use k_corelib::boot_info::KParams;
+use x86_64::{
+    registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags, Efer, EferFlags},
+    structures::paging::PhysFrame,
 };
 
-pub fn load_kernel() -> u64 {
-    let img: Result<boot::ScopedProtocol<fs::SimpleFileSystem>, uefi::Error> =
-        boot::get_image_file_system(image_handle());
+pub fn boot_kernel(
+    entry_point: u64,
+    page_table_address: x86_64::PhysAddr,
+    kernel_params: KParams,
+) -> ! {
+    unsafe {
+        // Set CR3 to new page table
+        Cr3::write(
+            PhysFrame::containing_address(page_table_address),
+            Cr3::read().1,
+        );
 
-    if img.is_err() {
-        let err_msg: uefi::Error = img.err().unwrap();
-        error!("Error reading kernel file: {err_msg}");
-        return 0;
-    }
+        // Enable PAE and long mode
+        Cr4::update(|cr4: &mut Cr4Flags| cr4.insert(Cr4Flags::PHYSICAL_ADDRESS_EXTENSION));
+        Efer::update(|efer: &mut EferFlags| efer.insert(EferFlags::LONG_MODE_ENABLE));
 
-    let mut img: boot::ScopedProtocol<fs::SimpleFileSystem> = img.unwrap();
-    let root_dir: Result<file::Directory, uefi::Error> = img.open_volume();
-    if root_dir.is_err() {
-        let err_msg: uefi::Error = root_dir.err().unwrap();
-        error!("Error reading kernel file: {err_msg}");
-        return 0;
-    }
+        // Enable paging
+        Cr0::update(|cr0: &mut Cr0Flags| {
+            cr0.insert(Cr0Flags::PAGING);
+            cr0.insert(Cr0Flags::PROTECTED_MODE_ENABLE);
+        });
 
-    let mut root_dir: file::Directory = root_dir.unwrap();
-    let fs: Result<file::FileHandle, uefi::Error> = root_dir.open(
-        cstr16!("kernel.elf"),
-        file::FileMode::Read,
-        FileAttribute::empty(),
-    );
-    if fs.is_err() {
-        let err_msg: uefi::Error = fs.err().unwrap();
-        error!("Error reading kernel file: {err_msg}");
-        return 0;
-    }
+        let k_params_ptr = &kernel_params as *const KParams;
 
-    let fs: file::FileHandle = fs.unwrap();
-    let fs: Option<file::RegularFile> = fs.into_regular_file();
-    if fs.is_none() {
-        error!("Error reading kernel file: not a file");
-        return 0;
-    }
-
-    let fs: file::RegularFile = fs.unwrap();
-
-    return 0;
+        // Far jump to kernel entry
+        let entry: extern "C" fn() -> ! = {
+            //dangerously set the kernel boot parameters in the rdi register (first param in SysV calling convention)
+            core::arch::asm!("mov rdi, {}", in(reg) k_params_ptr);
+            core::mem::transmute(entry_point)
+        };
+        entry();
+    };
 }

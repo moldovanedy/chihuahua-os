@@ -2,8 +2,9 @@
 #![no_main]
 
 use core::panic::PanicInfo;
+use k_corelib::boot_info;
+use k_corelib::log;
 
-mod k_drivers;
 mod renderer;
 
 #[panic_handler]
@@ -12,14 +13,17 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kmain() -> ! {
-    //k_drivers::com_debug::init_serial();
-    //k_drivers::com_debug::write_char(b'1');
+pub extern "C" fn kmain(k_params: *const boot_info::FramebufferData) -> ! {
+    log::log_debug("Kernel booted!");
 
-    //renderer::draw_test();
+    let fb_info: &boot_info::FramebufferData = unsafe { &*k_params };
+
+    renderer::setup_fb(fb_info);
+    renderer::draw_test();
 
     loop {
         unsafe {
+            core::arch::asm!("cli");
             core::arch::asm!("hlt");
         }
     }

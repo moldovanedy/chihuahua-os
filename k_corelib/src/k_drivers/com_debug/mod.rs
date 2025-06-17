@@ -1,9 +1,15 @@
-use k_corelib::ports;
+use crate::ports;
 
 const PORT: u32 = 0x3f8; //COM1 interface
 
+static mut IS_INITIALIZED: bool = false;
+
 pub fn init_serial() -> bool {
     unsafe {
+        if IS_INITIALIZED {
+            return true;
+        }
+
         ports::write_u8(PORT + 1, 0x00); // Disable all interrupts
         ports::write_u8(PORT + 3, 0x80); // Enable DLAB (set baud rate divisor)
         ports::write_u8(PORT + 0, 0x03); // Set divisor to 3 (lo byte) 38400 baud
@@ -14,14 +20,19 @@ pub fn init_serial() -> bool {
         ports::write_u8(PORT + 4, 0x1E); // Set in loopback mode, test the serial chip
 
         // Test serial chip (send byte 0xAE and check if serial returns same byte)
-        ports::write_u8(PORT + 0, 0xAE);
-        if ports::read_u8(PORT + 0) != 0xAE {
+        ports::write_u8(PORT, 0xAE);
+        if ports::read_u8(PORT) != 0xAE {
             return false;
         }
 
         ports::write_u8(PORT + 4, 0x0F); // Normal operation mode
+        IS_INITIALIZED = true;
         return true;
     }
+}
+
+pub fn is_initialized() -> bool {
+    unsafe { IS_INITIALIZED }
 }
 
 pub fn write_char(chr: u8) {

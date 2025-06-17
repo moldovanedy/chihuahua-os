@@ -1,4 +1,8 @@
 #![no_std]
 
-mod arch;
+pub mod boot_info;
+pub mod log;
 pub mod ports;
+
+mod arch;
+mod k_drivers;

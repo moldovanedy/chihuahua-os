@@ -12,5 +12,6 @@ install-all:
 	mount $($@_LOOPBACK_DEV) $$MOUNT_TARGET
 
 	$(MAKE) -f bootloader/Makefile fast-install
+	$(MAKE) -f kernel/Makefile fast-install
 
 	../run/umount.sh $($@_LOOPBACK_DEV)

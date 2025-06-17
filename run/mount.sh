@@ -5,6 +5,6 @@ if [[ $# -ne 1 ]]; then
     exit 1
 fi
 
-loopback_dev = $((losetup --find --show $1))
+loopback_dev="$(losetup --find --show $1)"
 echo "Loopback device is: $loopback_dev. You need to specify this when unmounting."
 mount $loopback_dev /mnt

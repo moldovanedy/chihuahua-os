@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+k_corelib = {path = "../k_corelib" }
+
 log = "0.4.27"
 uefi = { version = "0.35.0", features = ["logger", "panic_handler"] }
 libm = "0.2.15"
+elf = { version = "0.8.0", default-features = false }
+x86_64 = "0.15.2"
