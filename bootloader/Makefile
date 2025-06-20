@@ -11,6 +11,10 @@ debug:
 	cp target/x86_64-unknown-uefi/debug/bootloader.efi bin
 	mv bin/bootloader.efi bin/BOOTX64.EFI
 
+clean:
+	rm -rf ./bin
+	rm -rf ./target
+
 install:
 	$(eval $@_LOOPBACK_DEV= $(shell losetup --find --show $$IMG_FILE))
 	mount $($@_LOOPBACK_DEV) $$MOUNT_TARGET

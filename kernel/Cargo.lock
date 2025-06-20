@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "dog_essentials"
+version = "0.1.0"
+dependencies = [
+ "k_corelib",
+]
+
+[[package]]
 name = "k_corelib"
 version = "0.1.0"
 
@@ -10,5 +17,15 @@ version = "0.1.0"
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "dog_essentials",
+ "k_corelib",
+ "psf",
+]
+
+[[package]]
+name = "psf"
+version = "0.1.0"
+dependencies = [
+ "dog_essentials",
  "k_corelib",
 ]

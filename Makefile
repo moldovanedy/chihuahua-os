@@ -1,11 +1,15 @@
-all: debug-all
+all: build-all
 
 export IMG_FILE
 export MOUNT_TARGET=/mnt
 
-debug-all:
+build-all:
 	$(MAKE) -C bootloader
 	$(MAKE) -C kernel
+
+clean:
+	$(MAKE) -f bootloader/Makefile clean
+	$(MAKE) -f kernel/Makefile clean
 
 install-all:
 	$(eval $@_LOOPBACK_DEV= $(shell losetup --find --show $$IMG_FILE))

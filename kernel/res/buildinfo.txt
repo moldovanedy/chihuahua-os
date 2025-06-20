@@ -1,1 +1,0 @@
-objcopy -O elf64-x86-64 -I binary Tamsyn8x16r.psf font.o

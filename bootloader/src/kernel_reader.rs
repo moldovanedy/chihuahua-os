@@ -47,7 +47,7 @@ pub fn read_kernel() -> u64 {
         return 0;
     }
 
-    let mut buffer: [u8; 8 * 1024] = [0; 8 * 1024];
+    let mut buffer: [u8; 64 * 1024] = [0; 64 * 1024];
     let mut fs: file::RegularFile = fs.unwrap();
 
     let read: Result<usize, uefi::Error> = fs.read(&mut buffer);

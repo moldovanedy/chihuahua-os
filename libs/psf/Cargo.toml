@@ -1,0 +1,11 @@
+[package]
+name = "psf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dog_essentials = { path = "../dog_essentials" }
+k_corelib = { path = "../../k_corelib" }
+
+[lib]
+crate-type = ["staticlib", "rlib"]

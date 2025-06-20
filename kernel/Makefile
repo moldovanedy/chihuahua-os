@@ -1,25 +1,30 @@
-all: debug
+all: build
 
 export IMG_FILE
 export MOUNT_TARGET=/mnt
+export RELEASE := true
 
-debug:
+build:
 	rm -rf ./obj
 	mkdir obj
 
-	cargo build
-	cp target/x86_64-unknown-dogos-dog/debug/libkernel.a obj
-
-	ld -n -T src/boot/linker.ld -o bin/kernel.elf obj/libkernel.a
-
-release:
-	rm -rf ./obj
-	mkdir obj
-
+ifeq ($(RELEASE), true)
 	cargo build -r
-	cp target/x86_64-unknown-dogos-dog/release/libkernel.a obj
+	cp target/x86_64-unknown-dogos-none/release/libkernel.a obj
+else
+	cargo build
+	cp target/x86_64-unknown-dogos-none/debug/libkernel.a obj
+endif
 
-	ld -n -T src/boot/linker.ld -o bin/kernel.elf obj/libkernel.a
+	#create embedded resources
+	objcopy -O elf64-x86-64 -I binary res/Tamsyn8x16r.psf obj/Tamsyn8x16r.psf.o
+
+	ld -n -T src/boot/linker.ld -o bin/kernel.elf obj/libkernel.a obj/Tamsyn8x16r.psf.o
+
+clean:
+	rm -rf ./bin
+	rm -rf ./obj
+	rm -rf ./target
 
 install:
 	$(eval $@_LOOPBACK_DEV= $(shell losetup --find --show $$IMG_FILE))

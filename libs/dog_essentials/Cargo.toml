@@ -1,9 +1,10 @@
 [package]
-name = "k_corelib"
+name = "dog_essentials"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+k_corelib = {path = "../../k_corelib" }
 
 [profile.dev]
 panic = "abort"
@@ -12,7 +13,4 @@ panic = "abort"
 panic = "abort"
 
 [lib]
-crate-type=["staticlib", "rlib"]
-test = false
-doctest = false
-bench = false
+crate-type = ["staticlib", "rlib"]

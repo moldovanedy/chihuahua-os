@@ -17,7 +17,9 @@
         "repr",
         "resb",
         "rlib",
+        "Tamsyn",
         "uefi",
+        "uninit",
         "Xrgb"
     ]
 }
