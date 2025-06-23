@@ -1,8 +1,8 @@
-use k_corelib::boot_info::FramebufferData;
+use boot_info::framebuffer::FramebufferData;
 use uefi::{
-    Handle,
     boot::{self},
-    proto::console::gop::{self, FrameBuffer, GraphicsOutput, PixelFormat},
+    proto::console::gop::{self, GraphicsOutput, PixelFormat},
+    Handle,
 };
 
 pub fn set_appropriate_framebuffer(pref_width: u32, pref_height: u32) -> Option<FramebufferData> {
@@ -30,8 +30,8 @@ pub fn set_appropriate_framebuffer(pref_width: u32, pref_height: u32) -> Option<
     //query all modes and pick the most appropriate one
     gop.modes().for_each(|x| {
         let res: (i32, i32) = (
-            (x.info().resolution().0 as i32),
-            (x.info().resolution().1 as i32),
+            x.info().resolution().0 as i32,
+            x.info().resolution().1 as i32,
         );
 
         let this_deviation: (i32, i32) =
@@ -53,17 +53,14 @@ pub fn set_appropriate_framebuffer(pref_width: u32, pref_height: u32) -> Option<
         return None;
     }
 
-    return fb_data_from_mode_info(best_mode_info, gop.frame_buffer());
+    return fb_data_from_mode_info(best_mode_info);
 }
 
 fn abs(val: i32) -> i32 {
     if val < 0 { -val } else { val }
 }
 
-pub fn fb_data_from_mode_info(
-    mode_info: gop::ModeInfo,
-    mut fb: FrameBuffer,
-) -> Option<FramebufferData> {
+pub fn fb_data_from_mode_info(mode_info: gop::ModeInfo) -> Option<FramebufferData> {
     let mut red_mask: u32 = 0;
     let mut green_mask: u32 = 0;
     let mut blue_mask: u32 = 0;
@@ -96,7 +93,7 @@ pub fn fb_data_from_mode_info(
             //get BPP
             for mask in [mask.red, mask.green, mask.blue, mask.reserved] {
                 let mut bit_pos: u8 = 31;
-                while bit_pos >= 0 && bit_pos > bits_per_pixel {
+                while bit_pos > bits_per_pixel {
                     if mask & (1 << bit_pos) != 0 {
                         bits_per_pixel = bit_pos + 1;
                         break;
@@ -114,7 +111,7 @@ pub fn fb_data_from_mode_info(
     }
 
     return Some(FramebufferData::new(
-        fb.as_mut_ptr() as u64,
+        boot_info::GOP_VIRTUAL_ADDRESS,
         mode_info.resolution().0 as u32,
         mode_info.resolution().1 as u32,
         mode_info.stride() as u32,

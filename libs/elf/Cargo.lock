@@ -3,12 +3,5 @@
 version = 4
 
 [[package]]
-name = "boot_info"
+name = "elf"
 version = "0.1.0"
-
-[[package]]
-name = "k_corelib"
-version = "0.1.0"
-dependencies = [
- "boot_info",
-]

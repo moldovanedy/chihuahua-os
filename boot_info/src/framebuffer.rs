@@ -1,9 +1,4 @@
 #[repr(C)]
-pub struct KParams {
-    pub fb_data: FramebufferData,
-}
-
-#[repr(C)]
 pub struct FramebufferData {
     address: u64,
     width: u32,

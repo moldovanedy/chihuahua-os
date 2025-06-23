@@ -1,20 +1,32 @@
 #![no_std]
 #![no_main]
 
-use k_corelib::boot_info;
+use boot_info;
 use k_corelib::log;
+use k_corelib::renderer;
 
-mod renderer;
+mod init_text;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kmain(k_params: *const boot_info::FramebufferData) -> ! {
+pub extern "C" fn kmain(k_params: *const boot_info::KParams) -> ! {
     log::log_debug("Kernel booted!");
 
-    let fb_info: &boot_info::FramebufferData = unsafe { &*k_params };
-
+    let fb_info: &boot_info::framebuffer::FramebufferData = unsafe { &(*k_params).fb_data };
     renderer::setup_fb(fb_info);
-    renderer::draw_test();
 
+    let fg_col: renderer::Color = renderer::Color::from_u32(0xff_ff_ff);
+    let bg_col: renderer::Color = renderer::Color::from_u32(0x00_00_00);
+    init_text::init();
+    init_text::write(b"Kernel booted!\n", fg_col, bg_col);
+
+    let mem_map_size: u32 = unsafe { (*k_params).memory_map_size };
+    // for i in 0..mem_map_size {
+    //     unsafe {
+    //         let data: u8 = *((boot_info::EFI_MMAP_VIRTUAL_ADDRESS as *const u8).add(i as usize));
+    //     }
+    // }
+
+    init_text::write(b"Halting now.", fg_col, bg_col);
     loop {
         unsafe {
             core::arch::asm!("cli");

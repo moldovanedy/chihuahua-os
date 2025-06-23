@@ -19,11 +19,9 @@ fn panic(_info: &PanicInfo) -> ! {
     }
 }
 
-pub mod boot_info;
 pub mod log;
 pub mod ports;
+pub mod renderer;
 
 mod arch;
 mod k_drivers;
-
-pub fn use_panic() {}

@@ -21,16 +21,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kernel"
-version = "0.1.0"
-dependencies = [
- "boot_info",
- "dog_essentials",
- "k_corelib",
- "psf",
-]
-
-[[package]]
 name = "psf"
 version = "0.1.0"
 dependencies = [

@@ -2,8 +2,8 @@ OUTPUT_FORMAT(elf64-x86-64)
 ENTRY(kmain)
 
 SECTIONS {
-    /* load at virtual address of 2GiB (higher-half kernel) */
-    . = 0x80000000;
+    /* load at a high virtual address (higher-half kernel) */
+    . = 0xffffffff80000000;
 
     .text BLOCK(4K) : ALIGN(4K)
 	{

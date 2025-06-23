@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/boot_info/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/bootloader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/k_corelib/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/kernel/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/libs/dog_essentials/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/libs/elf/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/libs/psf/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/boot_info/target" />
+      <excludeFolder url="file://$MODULE_DIR$/bootloader/target" />
+      <excludeFolder url="file://$MODULE_DIR$/k_corelib/target" />
+      <excludeFolder url="file://$MODULE_DIR$/kernel/target" />
+      <excludeFolder url="file://$MODULE_DIR$/libs/dog_essentials/target" />
+      <excludeFolder url="file://$MODULE_DIR$/libs/elf/target" />
+      <excludeFolder url="file://$MODULE_DIR$/libs/psf/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

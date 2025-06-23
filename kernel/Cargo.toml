@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 k_corelib = { path = "../k_corelib" }
+boot_info = { path = "../boot_info" }
 dog_essentials = { path = "../libs/dog_essentials" }
 psf = { path = "../libs/psf" }
 

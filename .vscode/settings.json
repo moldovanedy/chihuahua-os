@@ -10,6 +10,7 @@
         "libdog",
         "libm",
         "LIMINE",
+        "mmap",
         "nasm",
         "nobits",
         "nomem",
@@ -20,6 +21,7 @@
         "Tamsyn",
         "uefi",
         "uninit",
+        "Virt",
         "Xrgb"
     ]
 }

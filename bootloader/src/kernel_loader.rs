@@ -1,4 +1,4 @@
-use k_corelib::boot_info::KParams;
+use boot_info::KParams;
 use x86_64::{
     registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags, Efer, EferFlags},
     structures::paging::PhysFrame,

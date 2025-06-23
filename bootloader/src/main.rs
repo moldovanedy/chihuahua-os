@@ -1,16 +1,16 @@
 #![no_std]
 #![no_main]
 
-use k_corelib::boot_info::{self, KParams};
+use crate::sys_config_reader::SystemConfig;
+use boot_info::memory_map::MemoryMapEntry;
 use log::{error, info, warn};
+use uefi::mem::memory_map::{MemoryMap, MemoryMapMut, MemoryMapOwned};
 use uefi::{
     boot::MemoryType,
     prelude::*,
     proto::console::gop::{self, GraphicsOutput},
 };
-use x86_64::PhysAddr;
-
-use crate::sys_config_reader::SystemConfig;
+use x86_64;
 
 mod graphics_config;
 mod kernel_loader;
@@ -43,14 +43,28 @@ fn main() -> Status {
     uefi::helpers::init().unwrap();
     info!("Starting boot proces...");
 
+    let mem_map = boot::memory_map(MemoryType::LOADER_DATA);
+    if mem_map.is_err() {
+        let err_msg: uefi::Error = mem_map.err().unwrap();
+        error!("Error getting the memory map: {err_msg}");
+        panic!();
+    }
+
+    let mut mem_map: MemoryMapOwned = mem_map.unwrap();
+    mem_map.sort();
+
     let config: SystemConfig = sys_config_reader::read_config().unwrap_or(SystemConfig::default());
 
-    let jump_address: u64 = kernel_reader::read_kernel();
-    if jump_address == 0 {
+    let k_load_data: Option<(u64, u64)> = kernel_reader::read_kernel(&mem_map);
+    if k_load_data.is_none() {
         panic_fn_str("KERNEL_NOT_LOADED");
     }
 
-    let mut fb_data: Option<boot_info::FramebufferData> =
+    let k_load_data: (u64, u64) = k_load_data.unwrap();
+    let k_physical_address: u64 = k_load_data.0;
+    let k_virtual_address: u64 = k_load_data.1;
+
+    let mut fb_data: Option<boot_info::framebuffer::FramebufferData> =
         graphics_config::set_appropriate_framebuffer(
             config.preferred_width(),
             config.preferred_height(),
@@ -72,9 +86,9 @@ fn main() -> Status {
             panic_fn(gop.unwrap_err());
         }
 
-        let mut gop = gop.unwrap();
+        let gop = gop.unwrap();
         let mode_info: gop::ModeInfo = gop.current_mode_info();
-        fb_data = graphics_config::fb_data_from_mode_info(mode_info, gop.frame_buffer());
+        fb_data = graphics_config::fb_data_from_mode_info(mode_info);
 
         //if still none, panic
         if fb_data.is_none() {
@@ -83,7 +97,7 @@ fn main() -> Status {
         }
     }
 
-    let fb_data: boot_info::FramebufferData = fb_data.unwrap();
+    let fb_data: boot_info::framebuffer::FramebufferData = fb_data.unwrap();
 
     let width: u32 = fb_data.width();
     let height: u32 = fb_data.height();
@@ -91,19 +105,72 @@ fn main() -> Status {
 
     //let _ = draw_test();
 
-    let page_table_address: x86_64::PhysAddr = paging::setup_identity_paging();
-    if page_table_address == PhysAddr::zero() {
-        panic_fn_str("MEMORY_PAGING_NOT_IDENTITY_MAPPED");
+    let gop_handle: Result<Handle, uefi::Error> = boot::get_handle_for_protocol::<GraphicsOutput>();
+    if gop_handle.is_err() {
+        panic_fn(gop_handle.clone().err().unwrap());
     }
 
-    info!("Paging enabled with identity mapping");
+    let gop_handle: Handle = gop_handle.unwrap();
+    let gop: Result<boot::ScopedProtocol<GraphicsOutput>, uefi::Error> =
+        boot::open_protocol_exclusive::<GraphicsOutput>(gop_handle);
+    if gop.is_err() {
+        panic_fn(gop.unwrap_err());
+    }
 
+    let mut gop = gop.unwrap();
+
+    let address_tuple: Option<(u64, u64)> =
+        paging::setup_paging(&mem_map, gop.frame_buffer(), k_physical_address);
+    if address_tuple.is_none() {
+        panic_fn_str("MEMORY_PAGING_NOT_MAPPED");
+    }
+
+    let address_tuple: (u64, u64) = address_tuple.unwrap();
+    let page_table_addr: u64 = address_tuple.0;
+    let efi_mmap_addr: u64 = address_tuple.1;
+
+    info!("Paging enabled");
+
+    let mut mem_map_size: u32 = 0;
     unsafe {
-        boot::exit_boot_services(Some(MemoryType::LOADER_DATA));
+        let mut final_mem_map: MemoryMapOwned =
+            boot::exit_boot_services(Some(MemoryType::LOADER_DATA));
+
+        final_mem_map.sort();
+        let mut efi_writer = efi_mmap_addr as *mut MemoryMapEntry;
+
+        for entry in final_mem_map.entries() {
+            *efi_writer = MemoryMapEntry::new(
+                boot_info::memory_map::MemoryType::from(entry.ty.0),
+                entry.att.bits(),
+                entry.phys_start,
+                entry.virt_start,
+                entry.page_count,
+            );
+
+            efi_writer = efi_writer.add(1);
+            mem_map_size += 40;
+        }
     }
 
-    let k_params: KParams = KParams { fb_data: fb_data };
-    kernel_loader::boot_kernel(jump_address, page_table_address, k_params);
+    //copy data from the given location to the precomputed physical location
+    unsafe {
+        // core::ptr::copy_nonoverlapping(
+        //     mem_map_ptr,
+        //     efi_mmap_addr as *mut u8,
+        //     mem_map_size as usize,
+        // );
+    }
+
+    let k_params = boot_info::KParams {
+        fb_data,
+        memory_map_size: mem_map_size,
+    };
+    kernel_loader::boot_kernel(
+        k_virtual_address,
+        x86_64::PhysAddr::new(page_table_addr),
+        k_params,
+    );
 }
 
 //TODO: this will write a logo later
