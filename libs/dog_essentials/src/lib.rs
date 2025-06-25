@@ -9,3 +9,4 @@ pub mod format_non_alloc;
 pub mod pointer_ops;
 pub mod static_cell;
 pub mod sync;
+pub mod geometry;

@@ -26,6 +26,11 @@ pub extern "C" fn kmain(k_params: *const boot_info::KParams) -> ! {
     //     }
     // }
 
+    for i in 0..500 {
+        init_text::write(dog_essentials::format_non_alloc::i32_to_str(i).to_str().as_bytes(), fg_col, bg_col);
+        init_text::write(b"\n", fg_col, bg_col);
+    }
+    
     init_text::write(b"Halting now.", fg_col, bg_col);
     loop {
         unsafe {

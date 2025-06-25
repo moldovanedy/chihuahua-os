@@ -9,13 +9,13 @@ use x86_64::structures::paging::{
     FrameAllocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB,
 };
 
-///An option of a tuple where the first element is the physical address of the page table and the
-/// second element is the physical address of the EFI memory map reserved region.
+///Returns an option for the physical address of the page table.
 pub fn setup_paging(
     mem_map: &memory_map::MemoryMapOwned,
     gop_fb: gop::FrameBuffer,
     k_physical_address: u64,
-) -> Option<(u64, u64)> {
+    efi_mmap_physical_address: u64,
+) -> Option<u64> {
     let page_table_ptr = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 4);
     if page_table_ptr.is_err() {
         let err_msg: uefi::Error = page_table_ptr.err().unwrap();
@@ -44,32 +44,8 @@ pub fn setup_paging(
         return None;
     }
 
-    //identity-map 4 GiB
-    // for i in 0..0xfffff {
-    //     let frame: PhysFrame = PhysFrame::containing_address(x86_64::PhysAddr::new(i * 0x1000));
-    //     let flags: PageTableFlags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-    //     //let page: Page = Page::containing_address(x86_64::VirtAddr::new(i * 0x1000));
-    //
-    //     unsafe {
-    //         // mapper
-    //         //     .map_to(page, frame, flags, &mut frame_allocator)
-    //         //     .unwrap()
-    //         //     .flush();
-    //
-    //         let mapper_flush = mapper.identity_map(frame, flags, &mut frame_allocator);
-    //         if mapper_flush.is_err() {
-    //             error!("Error setting up paging: frame could not be identity-mapped");
-    //             return x86_64::PhysAddr::zero();
-    //         }
-    //
-    //         let mapper_flush = mapper_flush.unwrap();
-    //         mapper_flush.flush();
-    //     }
-    // }
-
-    let efi_map_addr = alloc_memory_for_efi_map(page_table);
-    if efi_map_addr.is_none() {
-        error!("Error finding memory for the EFI memory map.");
+    let success: bool = mmap_efi_mmap(efi_mmap_physical_address, page_table);
+    if !success {
         return None;
     }
 
@@ -98,26 +74,7 @@ pub fn setup_paging(
         }
     }
 
-    // for i in 0..10 {
-    //     let frame: PhysFrame =
-    //         PhysFrame::containing_address(x86_64::PhysAddr::new(0x9000_0000 + i * 0x1000));
-    //     let flags: PageTableFlags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-    //     let page: Page = Page::containing_address(x86_64::VirtAddr::new(
-    //         boot_info::EFI_MMAP_VIRTUAL_ADDRESS + i * 0x1000,
-    //     ));
-    //
-    //     unsafe {
-    //         let mapper_flush = mapper.map_to(page, frame, flags, &mut frame_allocator);
-    //         if mapper_flush.is_err() {
-    //             error!("Error mapping the EFI memory map.");
-    //             return x86_64::PhysAddr::new(0);
-    //         }
-    //
-    //         mapper_flush.unwrap().flush();
-    //     }
-    // }
-
-    return Some((page_table_ptr.as_ptr() as u64, efi_map_addr.unwrap()));
+    return Some(page_table_ptr.as_ptr() as u64);
 }
 
 pub fn mmap_efi_map(phys_address: u64, size: u32, page_table: *mut PageTable) -> bool {
@@ -227,26 +184,14 @@ fn mmap_gop(page_table: *mut PageTable, mut gop_fb: gop::FrameBuffer) -> bool {
     return true;
 }
 
-fn alloc_memory_for_efi_map(page_table: *mut PageTable) -> Option<u64> {
+fn mmap_efi_mmap(efi_mmap_phys_addr: u64, page_table: *mut PageTable) -> bool {
     let mut mapper: OffsetPageTable<'_> =
         unsafe { OffsetPageTable::new(&mut *page_table, x86_64::VirtAddr::new(0)) };
     let mut frame_allocator = UefiFrameAllocator {};
 
-    let addr: uefi::Result<NonNull<u8>> =
-        boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 16);
-    if addr.is_err() {
-        error!("Error allocating memory for the EFI memory map.");
-        return None;
-    }
-
-    let addr = addr.unwrap().as_ptr() as u64;
-    if addr == 0 {
-        return None;
-    }
-
     for i in 0..16 {
         let frame: PhysFrame =
-            PhysFrame::containing_address(x86_64::PhysAddr::new(addr + i * 0x1000));
+            PhysFrame::containing_address(x86_64::PhysAddr::new(efi_mmap_phys_addr + i * 0x1000));
         let flags: PageTableFlags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         let page: Page = Page::containing_address(x86_64::VirtAddr::new(
             boot_info::EFI_MMAP_VIRTUAL_ADDRESS + i * 0x1000,
@@ -256,17 +201,17 @@ fn alloc_memory_for_efi_map(page_table: *mut PageTable) -> Option<u64> {
             let mapper_flush = mapper.map_to(page, frame, flags, &mut frame_allocator);
             if mapper_flush.is_err() {
                 error!("Error mapping the EFI memory map.");
-                return None;
+                return false;
             }
 
             mapper_flush.unwrap().flush();
         }
     }
 
-    return Some(addr);
+    return true;
 }
 
-struct UefiFrameAllocator {}
+pub(crate) struct UefiFrameAllocator {}
 
 unsafe impl FrameAllocator<Size4KiB> for UefiFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {

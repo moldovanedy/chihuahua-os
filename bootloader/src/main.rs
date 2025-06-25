@@ -12,6 +12,7 @@ use uefi::{
 };
 use x86_64;
 
+mod efi_mem_map;
 mod graphics_config;
 mod kernel_loader;
 mod kernel_reader;
@@ -19,15 +20,11 @@ mod paging;
 mod sys_config_reader;
 
 fn panic_fn(err: uefi::Error) -> ! {
-    error!(
-        "Fatal error: {err}. \r\nSystem halted. You can turn off the device now (auto power-off in 5 seconds)."
-    );
+    error!("Fatal error: {err}. \r\nSystem halted. You can turn off the device now.");
 
-    for _i in 0..4 {
+    loop {
         boot::stall(1_000_000);
     }
-
-    panic!();
 }
 
 fn panic_fn_str(err: &str) -> ! {
@@ -43,15 +40,7 @@ fn main() -> Status {
     uefi::helpers::init().unwrap();
     info!("Starting boot proces...");
 
-    let mem_map = boot::memory_map(MemoryType::LOADER_DATA);
-    if mem_map.is_err() {
-        let err_msg: uefi::Error = mem_map.err().unwrap();
-        error!("Error getting the memory map: {err_msg}");
-        panic!();
-    }
-
-    let mut mem_map: MemoryMapOwned = mem_map.unwrap();
-    mem_map.sort();
+    let mem_map: MemoryMapOwned = get_efi_mmap();
 
     let config: SystemConfig = sys_config_reader::read_config().unwrap_or(SystemConfig::default());
 
@@ -62,7 +51,7 @@ fn main() -> Status {
 
     let k_load_data: (u64, u64) = k_load_data.unwrap();
     let k_physical_address: u64 = k_load_data.0;
-    let k_virtual_address: u64 = k_load_data.1;
+    let k_entry_point: u64 = k_load_data.1;
 
     let mut fb_data: Option<boot_info::framebuffer::FramebufferData> =
         graphics_config::set_appropriate_framebuffer(
@@ -72,62 +61,43 @@ fn main() -> Status {
 
     if fb_data.is_none() {
         warn!("Failed to set the best graphics mode.");
-
-        let gop_handle: Result<Handle, uefi::Error> =
-            boot::get_handle_for_protocol::<GraphicsOutput>();
-        if gop_handle.is_err() {
-            panic_fn(gop_handle.clone().err().unwrap());
-        }
-
-        let gop_handle: Handle = gop_handle.unwrap();
-        let gop: Result<boot::ScopedProtocol<GraphicsOutput>, uefi::Error> =
-            boot::open_protocol_exclusive::<GraphicsOutput>(gop_handle);
-        if gop.is_err() {
-            panic_fn(gop.unwrap_err());
-        }
-
-        let gop = gop.unwrap();
-        let mode_info: gop::ModeInfo = gop.current_mode_info();
+        let mode_info: gop::ModeInfo = get_gop().current_mode_info();
         fb_data = graphics_config::fb_data_from_mode_info(mode_info);
 
         //if still none, panic
         if fb_data.is_none() {
             error!("Fatal: no graphics mode could be retrieved.");
-            panic!()
+            panic_fn_str("GFX_ERROR");
         }
     }
 
     let fb_data: boot_info::framebuffer::FramebufferData = fb_data.unwrap();
-
     let width: u32 = fb_data.width();
     let height: u32 = fb_data.height();
     info!("Switched to graphics mode with resolution {width}x{height}.");
 
     //let _ = draw_test();
 
-    let gop_handle: Result<Handle, uefi::Error> = boot::get_handle_for_protocol::<GraphicsOutput>();
-    if gop_handle.is_err() {
-        panic_fn(gop_handle.clone().err().unwrap());
+    let efi_map_addr: Option<u64> = efi_mem_map::alloc_memory_for_efi_map();
+    if efi_map_addr.is_none() {
+        error!("Error finding memory for the EFI memory map.");
+        panic_fn_str("EFI_MMAP_ERROR")
     }
 
-    let gop_handle: Handle = gop_handle.unwrap();
-    let gop: Result<boot::ScopedProtocol<GraphicsOutput>, uefi::Error> =
-        boot::open_protocol_exclusive::<GraphicsOutput>(gop_handle);
-    if gop.is_err() {
-        panic_fn(gop.unwrap_err());
-    }
+    let efi_mmap_addr: u64 = efi_map_addr.unwrap();
+    let mem_map: MemoryMapOwned = get_efi_mmap();
 
-    let mut gop = gop.unwrap();
-
-    let address_tuple: Option<(u64, u64)> =
-        paging::setup_paging(&mem_map, gop.frame_buffer(), k_physical_address);
-    if address_tuple.is_none() {
+    let page_table_addr: Option<u64> = paging::setup_paging(
+        &mem_map,
+        get_gop().frame_buffer(),
+        k_physical_address,
+        efi_mmap_addr,
+    );
+    if page_table_addr.is_none() {
         panic_fn_str("MEMORY_PAGING_NOT_MAPPED");
     }
 
-    let address_tuple: (u64, u64) = address_tuple.unwrap();
-    let page_table_addr: u64 = address_tuple.0;
-    let efi_mmap_addr: u64 = address_tuple.1;
+    let page_table_addr: u64 = page_table_addr.unwrap();
 
     info!("Paging enabled");
 
@@ -153,24 +123,45 @@ fn main() -> Status {
         }
     }
 
-    //copy data from the given location to the precomputed physical location
-    unsafe {
-        // core::ptr::copy_nonoverlapping(
-        //     mem_map_ptr,
-        //     efi_mmap_addr as *mut u8,
-        //     mem_map_size as usize,
-        // );
-    }
-
     let k_params = boot_info::KParams {
         fb_data,
         memory_map_size: mem_map_size,
     };
     kernel_loader::boot_kernel(
-        k_virtual_address,
+        k_entry_point,
         x86_64::PhysAddr::new(page_table_addr),
         k_params,
     );
+}
+
+fn get_gop() -> boot::ScopedProtocol<GraphicsOutput> {
+    let gop_handle: Result<Handle, uefi::Error> = boot::get_handle_for_protocol::<GraphicsOutput>();
+    if gop_handle.is_err() {
+        panic_fn(gop_handle.clone().err().unwrap());
+    }
+
+    let gop_handle: Handle = gop_handle.unwrap();
+    let gop: Result<boot::ScopedProtocol<GraphicsOutput>, uefi::Error> =
+        boot::open_protocol_exclusive::<GraphicsOutput>(gop_handle);
+    if gop.is_err() {
+        panic_fn(gop.unwrap_err());
+    }
+
+    return gop.unwrap();
+}
+
+fn get_efi_mmap() -> MemoryMapOwned {
+    let mem_map = boot::memory_map(MemoryType::LOADER_DATA);
+    if mem_map.is_err() {
+        let err_msg: uefi::Error = mem_map.err().unwrap();
+        error!("Error getting the memory map: {err_msg}");
+        panic_fn_str("MMAP_ERROR");
+    }
+
+    let mut mem_map: MemoryMapOwned = mem_map.unwrap();
+    mem_map.sort();
+
+    return mem_map;
 }
 
 //TODO: this will write a logo later

@@ -1,5 +1,6 @@
 use core::fmt::Debug;
 
+use crate::essentials_clone::geometry::rect::Rect;
 use boot_info;
 
 static mut BASE_ADDR: u64 = 0;
@@ -25,7 +26,7 @@ impl Color {
         }
     }
 
-    /// Returns a color from a u32 in the form of 0x00_RR_GG_BB (RGB on the least significant 24 bits).
+    /// Returns a color from an u32 in the form of 0x00_RR_GG_BB (RGB on the least significant 24 bits).
     /// This will discard the most significant 8 bits.
     pub fn from_u32(color: u32) -> Self {
         if color > 0xff_ff_ff {
@@ -50,7 +51,7 @@ impl Color {
     }
 
     pub fn b(&self) -> u8 {
-        (self.raw_color) as u8
+        self.raw_color as u8
     }
 
     pub fn set_r(&mut self, red: u8) {
@@ -149,7 +150,7 @@ pub fn draw_rect(x: u32, y: u32, width: u32, height: u32, color: Color) {
             }
 
             for x_pos in x..(x + width) {
-                //can't draw anymore to the right, skip to the next row
+                //can't draw any more to the right, skip to the next row
                 if x_pos > WIDTH {
                     break;
                 }
@@ -180,7 +181,7 @@ pub fn draw_rect_buffer(x: u32, y: u32, width: u32, height: u32, buffer: &[Color
             }
 
             for x_pos in 0..width {
-                //can't draw anymore to the right, skip to the next row
+                //can't draw any more to the right, skip to the next row
                 if x_pos > WIDTH {
                     break;
                 }
@@ -193,6 +194,87 @@ pub fn draw_rect_buffer(x: u32, y: u32, width: u32, height: u32, buffer: &[Color
     }
 }
 
+pub fn clear_screen(color: Color) {
+    unsafe {
+        let bytes_per_pixel: u32 = (BITS_PER_PIXEL / 8) as u32;
+        let fb: *mut u8 = BASE_ADDR as *mut u8;
+
+        for y_pos in 0..HEIGHT {
+            for x_pos in 0..WIDTH {
+                let base_addr: *mut u8 =
+                    fb.add((bytes_per_pixel * y_pos * PITCH + bytes_per_pixel * x_pos) as usize);
+                direct_draw(base_addr, color.get());
+            }
+        }
+    }
+}
+
+pub fn copy_region(src: &Rect, dest: &Rect) {
+    unsafe {
+        if src.width() > WIDTH as f32
+            || src.width() <= 0.0
+            || src.height() > HEIGHT as f32
+            || src.height() <= 0.0
+        {
+            return;
+        }
+
+        if dest.width() > WIDTH as f32
+            || dest.width() <= 0.0
+            || dest.height() > HEIGHT as f32
+            || dest.height() <= 0.0
+        {
+            return;
+        }
+
+        let fb: *mut u8 = BASE_ADDR as *mut u8;
+        let bytes_per_pixel: u32 = (BITS_PER_PIXEL / 8) as u32;
+        let src_offset: usize =
+            (bytes_per_pixel * src.y() as u32 * PITCH + bytes_per_pixel * src.x() as u32) as usize;
+        let dest_offset: usize = 
+            (bytes_per_pixel * dest.y() as u32 * PITCH + bytes_per_pixel * dest.x() as u32) as usize;
+
+        for y_pos in 0..src.height() as u32 {
+            //can't draw lower
+            if y_pos > dest.height() as u32
+                || y_pos as i32 + src.y() as i32 > HEIGHT as i32
+                || y_pos as i32 + dest.y() as i32 > HEIGHT as i32
+            {
+                break;
+            }
+
+            if y_pos as i32 + (dest.y() as i32) < 0 {
+                continue;
+            }
+
+            for x_pos in 0..src.width() as u32 {
+                //can't draw any more to the right, skip to the next row
+                if x_pos > dest.width() as u32
+                    || x_pos as i32 + src.x() as i32 > WIDTH as i32
+                    || x_pos as i32 + dest.x() as i32 > WIDTH as i32
+                {
+                    break;
+                }
+
+                if x_pos as i32 + (dest.x() as i32) < 0 {
+                    continue;
+                }
+
+                let off: usize =
+                    (bytes_per_pixel * y_pos * PITCH + bytes_per_pixel * x_pos) as usize;
+                let fb_src: *mut u8 = fb.add(src_offset + off);
+                let fb_dest: *mut u8 = fb.add(dest_offset + off);
+
+                *fb_dest.add(0) = *fb_src.add(0);
+                *fb_dest.add(1) = *fb_src.add(1);
+                *fb_dest.add(2) = *fb_src.add(2);
+                *fb_dest.add(3) = *fb_src.add(3);
+            }
+        }
+    }
+}
+
+#[inline]
 fn direct_draw(fb: *mut u8, color: u32) {
     unsafe {
         *fb.add(0) = color as u8;

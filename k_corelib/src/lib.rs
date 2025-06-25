@@ -22,6 +22,7 @@ fn panic(_info: &PanicInfo) -> ! {
 pub mod log;
 pub mod ports;
 pub mod renderer;
+pub mod essentials_clone;
 
 mod arch;
 mod k_drivers;
