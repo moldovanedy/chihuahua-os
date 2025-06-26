@@ -3,6 +3,7 @@ use elf::endian::LittleEndian;
 use log::error;
 use uefi::boot::{image_handle, AllocateType, MemoryType};
 use uefi::mem::memory_map::{MemoryMap, MemoryMapOwned};
+use uefi::proto::media::file::FileInfo;
 use uefi::{
     prelude::*,
     proto::media::{
@@ -23,44 +24,37 @@ pub fn read_kernel(mem_map: &MemoryMapOwned) -> Option<(u64, u64)> {
         return None;
     }
 
-    let img: Result<boot::ScopedProtocol<fs::SimpleFileSystem>, uefi::Error> =
-        boot::get_image_file_system(image_handle());
-
-    if img.is_err() {
-        let err_msg: uefi::Error = img.err().unwrap();
-        error!("Error reading kernel file: {err_msg}");
-        return None;
-    }
-
-    let mut img: boot::ScopedProtocol<fs::SimpleFileSystem> = img.unwrap();
-    let root_dir: Result<file::Directory, uefi::Error> = img.open_volume();
-    if root_dir.is_err() {
-        let err_msg: uefi::Error = root_dir.err().unwrap();
-        error!("Error reading kernel file: {err_msg}");
-        return None;
-    }
-
-    let mut root_dir: file::Directory = root_dir.unwrap();
-    let fs: Result<file::FileHandle, uefi::Error> = root_dir.open(
-        cstr16!("kernel.elf"),
-        file::FileMode::Read,
-        FileAttribute::empty(),
-    );
-    if fs.is_err() {
-        let err_msg: uefi::Error = fs.err().unwrap();
-        error!("Error reading kernel file: {err_msg}");
-        return None;
-    }
-
-    let fs: file::FileHandle = fs.unwrap();
-    let fs: Option<file::RegularFile> = fs.into_regular_file();
+    let fs = get_file_handle();
     if fs.is_none() {
-        error!("Error reading kernel file: not a file");
         return None;
     }
 
-    let mut buffer: [u8; 64 * 1024] = [0; 64 * 1024];
-    let mut fs: file::RegularFile = fs.unwrap();
+    let mut fs = fs.unwrap();
+
+    let mut info_buffer: [u8; 4096] = [0; 4096];
+    let info: uefi::Result<&mut FileInfo, Option<usize>> =
+        fs.get_info::<FileInfo>(&mut info_buffer);
+    if info.is_err() {
+        let msg = info.err().unwrap();
+        error!("Error reading kernel file info {msg}.");
+        return None;
+    }
+
+    let info: &mut FileInfo = info.unwrap();
+    let k_size = info.file_size() as usize;
+
+    let mut buffer: &mut [u8];
+    let k_space = boot::allocate_pages(
+        AllocateType::AnyPages,
+        MemoryType::BOOT_SERVICES_DATA, //we want to reclaim this memory later
+        (k_size / 0x1000) + 1,
+    );
+
+    let k_space = k_space.unwrap();
+    let k_space_addr = k_space.as_ptr();
+    unsafe {
+        buffer = core::slice::from_raw_parts_mut(k_space_addr, k_size);
+    }
 
     let read: Result<usize, uefi::Error> = fs.read(&mut buffer);
     if read.is_err() {
@@ -88,7 +82,6 @@ pub fn read_kernel(mem_map: &MemoryMapOwned) -> Option<(u64, u64)> {
 
     for ph in prog_headers {
         if ph.p_type == elf::abi::PT_LOAD {
-            // let dest: usize = (ph.p_paddr & ((1 << 32) - 1)) as usize;
             let dest: u64 = start_physical_address;
             let size: usize = ph.p_memsz as usize;
             let src_offset: usize = ph.p_offset as usize;
@@ -163,4 +156,44 @@ fn find_physical_region(mem_map: &MemoryMapOwned) -> Option<u64> {
     }
 
     return None;
+}
+
+fn get_file_handle() -> Option<file::RegularFile> {
+    let img: Result<boot::ScopedProtocol<fs::SimpleFileSystem>, uefi::Error> =
+        boot::get_image_file_system(image_handle());
+
+    if img.is_err() {
+        let err_msg: uefi::Error = img.err().unwrap();
+        error!("Error reading kernel file: {err_msg}");
+        return None;
+    }
+
+    let mut img: boot::ScopedProtocol<fs::SimpleFileSystem> = img.unwrap();
+    let root_dir: Result<file::Directory, uefi::Error> = img.open_volume();
+    if root_dir.is_err() {
+        let err_msg: uefi::Error = root_dir.err().unwrap();
+        error!("Error reading kernel file: {err_msg}");
+        return None;
+    }
+
+    let mut root_dir: file::Directory = root_dir.unwrap();
+    let fs: Result<file::FileHandle, uefi::Error> = root_dir.open(
+        cstr16!("boot\\kernel.elf"),
+        file::FileMode::Read,
+        FileAttribute::empty(),
+    );
+    if fs.is_err() {
+        let err_msg: uefi::Error = fs.err().unwrap();
+        error!("Error reading kernel file: {err_msg}");
+        return None;
+    }
+
+    let fs: file::FileHandle = fs.unwrap();
+    let fs: Option<file::RegularFile> = fs.into_regular_file();
+    if fs.is_none() {
+        error!("Error reading kernel file: not a file");
+        return None;
+    }
+
+    return Some(fs.unwrap());
 }

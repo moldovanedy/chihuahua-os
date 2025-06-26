@@ -18,8 +18,12 @@ clean:
 install:
 	$(eval $@_LOOPBACK_DEV= $(shell losetup --find --show $$IMG_FILE))
 	mount $($@_LOOPBACK_DEV) $$MOUNT_TARGET
+
+	mkdir -p $$MOUNT_TARGET/EFI/BOOT
 	cp bin/BOOTX64.EFI $$MOUNT_TARGET/EFI/BOOT/BOOTX64.EFI
+
 	../run/umount.sh $($@_LOOPBACK_DEV)
 
 fast-install:
+	mkdir -p $$MOUNT_TARGET/EFI/BOOT
 	cp bin/BOOTX64.EFI $$MOUNT_TARGET/EFI/BOOT/BOOTX64.EFI

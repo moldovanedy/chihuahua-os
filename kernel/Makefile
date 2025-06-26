@@ -10,10 +10,10 @@ build:
 
 ifeq ($(RELEASE), true)
 	cargo build -r
-	cp target/x86_64-unknown-dogos-none/release/libkernel.a obj
+	cp target/x86_64-unknown-chihuahuaos-none/release/libkernel.a obj
 else
 	cargo build
-	cp target/x86_64-unknown-dogos-none/debug/libkernel.a obj
+	cp target/x86_64-unknown-chihuahuaos-none/debug/libkernel.a obj
 endif
 
 	#create embedded resources
@@ -29,8 +29,12 @@ clean:
 install:
 	$(eval $@_LOOPBACK_DEV= $(shell losetup --find --show $$IMG_FILE))
 	mount $($@_LOOPBACK_DEV) $$MOUNT_TARGET
-	cp bin/kernel.elf $$MOUNT_TARGET/kernel.elf
+
+	mkdir -p $$MOUNT_TARGET/boot
+	cp bin/kernel.elf $$MOUNT_TARGET/boot/kernel.elf
+
 	../run/umount.sh $($@_LOOPBACK_DEV)
 
 fast-install:
-	cp bin/kernel.elf $$MOUNT_TARGET/kernel.elf
+	mkdir -p $$MOUNT_TARGET/boot
+	cp bin/kernel.elf $$MOUNT_TARGET/boot/kernel.elf

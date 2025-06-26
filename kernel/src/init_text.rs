@@ -96,6 +96,6 @@ pub fn write(raw_string: &[u8], fg_color: renderer::Color, bg_color: renderer::C
 fn scroll() {
     use k_corelib::essentials_clone::geometry::rect as rect_clone;
     renderer::copy_region(
-        &rect_clone::Rect::from_coords(0.0, 0.0, renderer::fb_width() as f32, renderer::fb_height() as f32), 
-        &rect_clone::Rect::from_coords(0.0, -16.0, renderer::fb_width() as f32, renderer::fb_height() as f32));
+        &rect_clone::Rect::from_coords(0.0, 16.0, renderer::fb_width() as f32, renderer::fb_height() as f32 - 16.0),
+        &rect_clone::Rect::from_coords(0.0, 0.0, renderer::fb_width() as f32, renderer::fb_height() as f32 - 16.0));
 }

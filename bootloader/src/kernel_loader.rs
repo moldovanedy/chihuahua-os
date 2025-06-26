@@ -37,3 +37,11 @@ pub fn boot_kernel(
         entry();
     };
 }
+
+// fn setup_gdt() {
+//     let mut gdt = GlobalDescriptorTable::new();
+//     let k_cs = gdt.append(Descriptor::kernel_code_segment());
+//     gdt.load();
+// 
+//     //x86_64::instructions::segmentation::CS::set_reg()
+// }

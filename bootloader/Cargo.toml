@@ -9,3 +9,9 @@ log = "0.4.27"
 uefi = { version = "0.35.0", features = ["logger", "panic_handler"] }
 elf = { version = "0.8.0", default-features = false }
 x86_64 = "0.15.2"
+
+[profile.release]
+opt-level = 'z'     # Optimize for size
+lto = true          # Enable link-time optimization
+codegen-units = 1   # Reduce number of codegen units to increase optimizations
+strip = true        # Strip symbols from binary

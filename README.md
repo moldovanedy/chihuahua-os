@@ -1,1 +1,1 @@
-# DogOS - an open source operating system made in Rust from scratch
+# ChihuahuaOS - an open source operating system made in Rust from scratch
