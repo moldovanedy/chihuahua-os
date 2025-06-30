@@ -54,6 +54,11 @@ pub fn log_fatal(message: &str) {
     log(Severity::Fatal, message);
 }
 
+pub fn log_raw(message: &str) {
+    init();
+    write(message);
+}
+
 fn write(message: &str) {
     for chr in message.as_bytes() {
         //if non-ASCII, replace with '?'

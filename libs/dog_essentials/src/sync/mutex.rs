@@ -3,10 +3,13 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+#[derive(Debug)]
 pub struct Mutex<T> {
     is_locked: AtomicBool,
     data: T,
 }
+
+unsafe impl<T> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
     pub const fn new(initial_data: T) -> Self {

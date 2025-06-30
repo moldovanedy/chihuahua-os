@@ -8,14 +8,14 @@ build-all:
 	$(MAKE) -C kernel
 
 clean:
-	$(MAKE) -f bootloader/Makefile clean
-	$(MAKE) -f kernel/Makefile clean
+	$(MAKE) -C bootloader clean
+	$(MAKE) -C kernel clean
 
 install-all:
 	$(eval $@_LOOPBACK_DEV= $(shell losetup --find --show $$IMG_FILE))
 	mount $($@_LOOPBACK_DEV) $$MOUNT_TARGET
 
-	$(MAKE) -f bootloader/Makefile fast-install
-	$(MAKE) -f kernel/Makefile fast-install
+	$(MAKE) -C bootloader fast-install
+	$(MAKE) -C kernel fast-install
 
-	../run/umount.sh $($@_LOOPBACK_DEV)
+	run/umount.sh $($@_LOOPBACK_DEV)
