@@ -1,8 +1,9 @@
+use crate::{log, renderer};
 use dog_essentials::geometry::rect::Rect;
 use dog_essentials::lazy_static::lazy_static;
 use dog_essentials::static_cell::StaticCell;
+use dog_essentials::sync::mutex::Mutex;
 use psf::ascii_psf_font::AsciiPsfFont;
-use crate::{log, renderer};
 
 lazy_static! {
     static ref FONT: AsciiPsfFont = {
@@ -12,8 +13,7 @@ lazy_static! {
             if font.is_some() {
                 let font = font.unwrap();
                 return font;
-            }
-            else {
+            } else {
                 return AsciiPsfFont::default();
             }
         }
@@ -27,6 +27,7 @@ static CURR_COLUMN: StaticCell<u32> = StaticCell::new(0);
 
 static WIDTH_IN_CHARS: StaticCell<u32> = StaticCell::new(0);
 static HEIGHT_IN_CHARS: StaticCell<u32> = StaticCell::new(0);
+static WRITE_LOCK: Mutex<bool> = Mutex::new(false);
 
 /// The width (in characters) for each line of text (max. 100 lines).
 static mut LINES_WIDTH: [u32; 100] = [0; 100];
@@ -34,10 +35,11 @@ static mut LINES_WIDTH: [u32; 100] = [0; 100];
 const HARDCODED_FONT_WIDTH: u32 = 8;
 const HARDCODED_FONT_HEIGHT: u32 = 16;
 
+#[allow(dead_code)]
 unsafe extern "C" {
-    unsafe static _binary_res_Tamsyn8x16r_psf_start: u8;
-    unsafe static _binary_res_Tamsyn8x16r_psf_end: u8;
-    unsafe static _binary_res_Tamsyn8x16r_psf_size: u8;
+    static _binary_res_Tamsyn8x16r_psf_start: u8;
+    static _binary_res_Tamsyn8x16r_psf_end: u8;
+    static _binary_res_Tamsyn8x16r_psf_size: u8;
 }
 
 pub fn init() {
@@ -45,7 +47,7 @@ pub fn init() {
         if IS_INIT {
             return;
         }
-        
+
         IS_INIT = true;
         WIDTH_IN_CHARS.set_value_unsafe(renderer::fb_width() / FONT.width());
         HEIGHT_IN_CHARS.set_value_unsafe(renderer::fb_height() / FONT.height());
@@ -53,6 +55,8 @@ pub fn init() {
 }
 
 pub fn write(raw_string: &[u8], fg_color: renderer::Color, bg_color: renderer::Color) {
+    WRITE_LOCK.lock();
+    
     unsafe {
         if FONT.width() != HARDCODED_FONT_WIDTH || FONT.height() != HARDCODED_FONT_HEIGHT {
             log::log_error("Font is in non-standard size. Can't write anything.");
@@ -92,7 +96,8 @@ pub fn write(raw_string: &[u8], fg_color: renderer::Color, bg_color: renderer::C
             let mut glyph_data: *const u8 = FONT.get_glyph(c as u32);
 
             //currently only 8x16 as we don't have dynamic memory allocation
-            let mut buffer: [renderer::Color; (HARDCODED_FONT_WIDTH * HARDCODED_FONT_HEIGHT) as usize] =
+            let mut buffer: [renderer::Color;
+                (HARDCODED_FONT_WIDTH * HARDCODED_FONT_HEIGHT) as usize] =
                 core::array::from_fn(|_i| renderer::Color::new(0, 0, 0));
 
             for y in 0..FONT.height() {
@@ -141,8 +146,7 @@ fn scroll() {
 
     if CURR_ROW.get_value_unsafe() >= &100 {
         width = renderer::fb_width() as f32;
-    }
-    else{
+    } else {
         unsafe {
             for i in 0..100 {
                 let this_width = LINES_WIDTH[i] * HARDCODED_FONT_WIDTH;
@@ -156,7 +160,16 @@ fn scroll() {
 
     renderer::copy_region(
         &Rect::from_coords(
-            0.0, 16.0, width, (renderer::fb_height() - HARDCODED_FONT_HEIGHT) as f32),
+            0.0,
+            16.0,
+            width,
+            (renderer::fb_height() - HARDCODED_FONT_HEIGHT) as f32,
+        ),
         &Rect::from_coords(
-            0.0, 0.0, width, (renderer::fb_height() - HARDCODED_FONT_HEIGHT) as f32));
+            0.0,
+            0.0,
+            width,
+            (renderer::fb_height() - HARDCODED_FONT_HEIGHT) as f32,
+        ),
+    );
 }

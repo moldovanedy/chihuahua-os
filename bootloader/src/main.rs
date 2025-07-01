@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+#[allow(dead_code)]
+
 use crate::sys_config_reader::SystemConfig;
 use boot_info::memory_map::MemoryMapEntry;
 use log::{error, info, warn};

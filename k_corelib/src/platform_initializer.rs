@@ -1,36 +1,30 @@
-use crate::interrupts;
-use crate::interrupts::ExceptionType;
+use crate::interrupts::cpu_exceptions::ExceptionType;
 use crate::renderer::{text_writer, Color};
+use crate::interrupts::{cpu_exceptions, pic_interrupts};
 
 pub fn initialize_platform() {
-    #[cfg(target_arch = "x86_64")]
-    {
-        //GDT is setup at startup automatically inside a lazy_static!
-        //gdt::setup_gdt();
-    }
+    //GDT should already be initialized, as it is inside a lazy_static
 
-    interrupts::set_handler(
-        ExceptionType::Breakpoint, 
-        |args| {
-            text_writer::write(
-                b"Breakpoint: ",
-                Color::from_u32(0xff_00_00),
-                Color::from_u32(0x00_00_00),
-            );
-            
-            text_writer::write(
-                dog_essentials::format_non_alloc::u64_to_str(args.instruction_pointer())
-                    .to_str()
-                    .as_bytes(),
-                Color::from_u32(0xff_00_00),
-                Color::from_u32(0x00_00_00),
-            );
-            
-            text_writer::write(
-                b"\n",
-                Color::from_u32(0xff_00_00),
-                Color::from_u32(0x00_00_00),
-            );
-        });
-    interrupts::setup();
+    cpu_exceptions::set_handler(ExceptionType::Breakpoint, |args| {
+        text_writer::write(
+            b"Breakpoint: ",
+            Color::from_u32(0xff_00_00),
+            Color::from_u32(0x00_00_00),
+        );
+
+        text_writer::write(
+            dog_essentials::format_non_alloc::u64_to_str_base(args.instruction_pointer(), 16)
+                .to_str()
+                .as_bytes(),
+            Color::from_u32(0xff_00_00),
+            Color::from_u32(0x00_00_00),
+        );
+
+        text_writer::write(b"\n", Color::from_u32(0xff_00_00), Color::from_u32(0));
+    });
+    cpu_exceptions::setup();
+
+    pic_interrupts::init();
+    x86_64::instructions::interrupts::enable();
+    text_writer::write(b"Set up interrupts.\n", Color::from_u32(0xff_ff_ff), Color::from_u32(0));
 }

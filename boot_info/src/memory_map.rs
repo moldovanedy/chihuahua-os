@@ -88,8 +88,6 @@ pub enum MemoryType {
     PersistentMemory = 14,
     /// Memory that must be accepted by the boot target before it can be used.
     Unaccepted = 15,
-    /// End of the defined memory types. Higher values are possible, though.
-    Max = 16,
 }
 
 impl From<u32> for MemoryType {
@@ -137,9 +135,9 @@ pub mod memory_attributes {
     /// Persistent memory.
     pub const NON_VOLATILE: u64 = 0x8000;
     /// This memory region is more reliable than other memory.
-    pub const MORE_RELIABLE: u64 = 0x10000;
+    pub const MORE_RELIABLE: u64 = 0x1_0000;
     /// This memory range can be set as read-only.
-    pub const READ_ONLY: u64 = 0x20000;
+    pub const READ_ONLY: u64 = 0x2_0000;
     /// This memory is earmarked for specific purposes such as for specific
     /// device drivers or applications. This serves as a hint to the OS to
     /// avoid this memory for core OS data or code that cannot be relocated.

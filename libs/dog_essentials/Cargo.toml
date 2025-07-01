@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-k_panic_handler = { path = "../../k_core_mods/k_panic_handler", optional = true }
+k_panic_handler = { path = "../../k_panic_handler", optional = true }
 lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 
 [profile.dev]

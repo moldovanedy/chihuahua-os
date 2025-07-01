@@ -194,7 +194,7 @@ fn mmap_efi_mmap(efi_mmap_phys_addr: u64, page_table: *mut PageTable) -> bool {
             PhysFrame::containing_address(x86_64::PhysAddr::new(efi_mmap_phys_addr + i * 0x1000));
         let flags: PageTableFlags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         let page: Page = Page::containing_address(x86_64::VirtAddr::new(
-            boot_info::EFI_MMAP_VIRTUAL_ADDRESS + i * 0x1000,
+            boot_info::MMAP_VIRTUAL_ADDRESS + i * 0x1000,
         ));
 
         unsafe {

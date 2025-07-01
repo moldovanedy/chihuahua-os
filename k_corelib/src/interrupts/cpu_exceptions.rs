@@ -1,36 +1,8 @@
 use crate::arch::x86_64::idt;
-
-pub struct InterruptArguments {
-    instruction_pointer: u64,
-    cpu_flags: u64,
-    stack_pointer: u64,
-}
-
-impl InterruptArguments {
-    pub fn new(instruction_pointer: u64, cpu_flags: u64, stack_pointer: u64) -> Self {
-        Self {
-            instruction_pointer,
-            cpu_flags,
-            stack_pointer,
-        }
-    }
-
-    pub fn instruction_pointer(&self) -> u64 {
-        self.instruction_pointer
-    }
-
-    pub fn cpu_flags(&self) -> u64 {
-        self.cpu_flags
-    }
-
-    pub fn stack_pointer(&self) -> u64 {
-        self.stack_pointer
-    }
-}
-
-pub type InterruptHandler = fn(InterruptArguments);
+use crate::interrupts::InterruptHandler;
 
 #[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ExceptionType {
     Division = 0,
     Breakpoint = 1,
@@ -40,6 +12,22 @@ pub enum ExceptionType {
     FloatingPointError = 5,
     NonMaskableInterrupt = 6,
     DoubleFault = 0xff_ff,
+}
+
+impl From<u32> for ExceptionType {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => ExceptionType::Division,
+            1 => ExceptionType::Breakpoint,
+            2 => ExceptionType::InvalidOpcode,
+            3 => ExceptionType::ProtectionFault,
+            4 => ExceptionType::PageFault,
+            5 => ExceptionType::FloatingPointError,
+            6 => ExceptionType::NonMaskableInterrupt,
+            0xff_ff => ExceptionType::DoubleFault,
+            _ => ExceptionType::DoubleFault,
+        }
+    }
 }
 
 pub fn setup() {
