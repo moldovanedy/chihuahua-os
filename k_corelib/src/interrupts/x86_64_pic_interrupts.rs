@@ -1,7 +1,7 @@
-use crate::k_drivers::pic::PicPair;
-use dog_essentials::sync::mutex::Mutex;
 use crate::arch::x86_64::idt;
 use crate::interrupts::InterruptHandler;
+use crate::k_drivers::x86_64::pic::PicPair;
+use dog_essentials::sync::mutex::Mutex;
 
 pub static PIC: Mutex<PicPair> = Mutex::new(PicPair::new());
 
@@ -15,7 +15,7 @@ pub fn init() {
 #[repr(u8)]
 pub enum InterruptIndex {
     PitTick = 32,
-    Kbd = 33
+    Kbd = 33,
 }
 
 impl From<u32> for InterruptIndex {
@@ -23,16 +23,18 @@ impl From<u32> for InterruptIndex {
         match value {
             32 => Self::PitTick,
             33 => Self::Kbd,
-            _ => Self::PitTick
+            _ => Self::PitTick,
         }
     }
 }
 
 impl InterruptIndex {
+    #[allow(dead_code)]
     fn as_u8(self) -> u8 {
         self as u8
     }
 
+    #[allow(dead_code)]
     fn as_usize(self) -> usize {
         usize::from(self.as_u8())
     }
@@ -43,7 +45,7 @@ pub fn set_handler(exception_type: InterruptIndex, handler: InterruptHandler) {
     {
         match exception_type {
             InterruptIndex::PitTick => idt::set_pic_tick_handler(handler),
-            InterruptIndex::Kbd => idt::set_kbd_input_handler(handler)
+            InterruptIndex::Kbd => idt::set_kbd_input_handler(handler),
         }
     }
 }

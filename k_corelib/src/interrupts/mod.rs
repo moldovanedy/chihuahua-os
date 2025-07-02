@@ -1,5 +1,5 @@
-pub mod pic_interrupts;
 pub mod cpu_exceptions;
+pub mod x86_64_pic_interrupts;
 
 pub struct InterruptArguments {
     instruction_pointer: u64,

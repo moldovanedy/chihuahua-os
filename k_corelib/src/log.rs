@@ -1,6 +1,8 @@
+use crate::k_drivers::x86_64;
 use core::str;
+use dog_essentials::sync::mutex::Mutex;
 
-use crate::k_drivers::com_debug;
+static WRITE_LOCK: Mutex<bool> = Mutex::new(false);
 
 pub fn log(severity: Severity, message: &str) {
     init();
@@ -60,23 +62,87 @@ pub fn log_raw(message: &str) {
 }
 
 fn write(message: &str) {
+    WRITE_LOCK.lock();
+
     for chr in message.as_bytes() {
         //if non-ASCII, replace with '?'
         if *chr >= 128 {
-            com_debug::write_char(b'?');
+            write_to_serial(b'?');
             continue;
         }
 
-        com_debug::write_char(*chr);
+        //Break
+        if *chr == 3 {
+            write_to_serial(b'^');
+            write_to_serial(b'B');
+            continue;
+        }
+
+        //Beep
+        if *chr == 7 {
+            write_to_serial(b'^');
+            write_to_serial(b'G');
+            continue;
+        }
+
+        //Backspace
+        if *chr == 8 {
+            write_to_serial(b'^');
+            write_to_serial(b'H');
+            continue;
+        }
+
+        //Tab
+        if *chr == 9 {
+            write_to_serial(b'^');
+            write_to_serial(b'I');
+            continue;
+        }
+
+        //LF or CR
+        if *chr == 10 || *chr == 13 {
+            write_to_serial(b'\n');
+            continue;
+        }
+
+        //Escape
+        if *chr == 27 {
+            write_to_serial(b'\\');
+            write_to_serial(b'0');
+            write_to_serial(b'3');
+            write_to_serial(b'3');
+            continue;
+        }
+
+        //Delete
+        if *chr == 127 {
+            write_to_serial(b'\\');
+            write_to_serial(b'0');
+            write_to_serial(b'3');
+            write_to_serial(b'3');
+            write_to_serial(b'[');
+            write_to_serial(b'3');
+            write_to_serial(b'~');
+            continue;
+        }
+
+        write_to_serial(*chr);
     }
 }
 
+fn write_to_serial(chr: u8) {
+    #[cfg(target_arch = "x86_64")]
+    x86_64::com_debug::write_char(chr);
+}
+
 fn init() {
-    if com_debug::is_initialized() {
+    #[cfg(target_arch = "x86_64")]
+    if x86_64::com_debug::is_initialized() {
         return;
     }
 
-    com_debug::init_serial();
+    #[cfg(target_arch = "x86_64")]
+    x86_64::com_debug::init_serial();
 }
 
 pub enum Severity {

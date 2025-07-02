@@ -1,7 +1,7 @@
 use core::fmt::Debug;
 
-use dog_essentials::geometry::rect::Rect;
 use boot_info;
+use dog_essentials::geometry::rect::Rect;
 
 pub mod text_writer;
 
@@ -129,16 +129,17 @@ pub fn setup_fb(fb_info: &boot_info::framebuffer::FramebufferData) -> bool {
         if RED_MASK == 0xff_00_00 && GREEN_MASK == 0xff_00 && BLUE_MASK == 0xff {
             IS_RGB32 = true;
         }
-        
+
         k_panic_handler::fb_writer::setup_fb(
-            fb_info.address(), 
-            fb_info.width(), 
-            fb_info.height(), 
-            fb_info.pitch(), 
+            fb_info.address(),
+            fb_info.width(),
+            fb_info.height(),
+            fb_info.pitch(),
             fb_info.bits_per_pixel(),
             fb_info.red_bitmask(),
             fb_info.green_bitmask(),
-            fb_info.blue_bitmask())
+            fb_info.blue_bitmask(),
+        )
     }
 
     return true;
@@ -243,8 +244,8 @@ pub fn copy_region(src: &Rect, dest: &Rect) {
         let bytes_per_pixel: u32 = (BITS_PER_PIXEL / 8) as u32;
         let src_offset: usize =
             (bytes_per_pixel * src.y() as u32 * PITCH + bytes_per_pixel * src.x() as u32) as usize;
-        let dest_offset: usize = 
-            (bytes_per_pixel * dest.y() as u32 * PITCH + bytes_per_pixel * dest.x() as u32) as usize;
+        let dest_offset: usize = (bytes_per_pixel * dest.y() as u32 * PITCH
+            + bytes_per_pixel * dest.x() as u32) as usize;
 
         for y_pos in 0..src.height() as u32 {
             //can't draw lower
@@ -310,6 +311,6 @@ fn convert_color_format(color: u32) -> u32 {
             return ((color & 0xff_00_00) >> 8) | ((color & 0xff_00) << 8) | ((color & 0xff) << 24);
         }
     }
-    
+
     return color;
 }

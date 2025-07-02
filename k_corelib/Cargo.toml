@@ -8,7 +8,7 @@ boot_info = { path = "../boot_info" }
 k_panic_handler = { path = "../k_panic_handler" }
 dog_essentials = { path = "../libs/dog_essentials" }
 psf = { path = "../libs/psf" }
-x86_64 = "0.15.2"
+x86_64 = { version = "0.15.2" }
 
 [profile.dev]
 panic = "abort"

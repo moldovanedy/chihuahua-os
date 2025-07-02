@@ -54,9 +54,11 @@ pub fn init() {
     }
 }
 
+/// Directly writes to the screen in the specified foreground and background color. On serial, this
+/// will not appear colored. Escape sequences are not interpreted but printed directly instead.
 pub fn write(raw_string: &[u8], fg_color: renderer::Color, bg_color: renderer::Color) {
     WRITE_LOCK.lock();
-    
+
     unsafe {
         if FONT.width() != HARDCODED_FONT_WIDTH || FONT.height() != HARDCODED_FONT_HEIGHT {
             log::log_error("Font is in non-standard size. Can't write anything.");

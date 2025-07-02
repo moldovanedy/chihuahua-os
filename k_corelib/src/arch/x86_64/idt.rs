@@ -1,5 +1,5 @@
 use crate::arch::x86_64::gdt_tss;
-use crate::interrupts::pic_interrupts;
+use crate::interrupts::x86_64_pic_interrupts;
 use crate::interrupts::{InterruptArguments, InterruptHandler};
 use dog_essentials::lazy_static::lazy_static;
 use dog_essentials::static_cell::StaticCell;
@@ -17,8 +17,8 @@ lazy_static! {
         idt.non_maskable_interrupt
             .set_handler_fn(on_non_maskable_interrupt_opcode);
 
-        idt[pic_interrupts::InterruptIndex::PitTick as u8].set_handler_fn(on_pit_tick);
-        idt[pic_interrupts::InterruptIndex::Kbd as u8].set_handler_fn(on_kbd_input);
+        idt[x86_64_pic_interrupts::InterruptIndex::PitTick as u8].set_handler_fn(on_pit_tick);
+        idt[x86_64_pic_interrupts::InterruptIndex::Kbd as u8].set_handler_fn(on_kbd_input);
 
         unsafe {
             idt.double_fault
@@ -139,18 +139,18 @@ extern "x86-interrupt" fn on_double_fault(stack_frame: InterruptStackFrame, erro
 
 extern "x86-interrupt" fn on_pit_tick(stack_frame: InterruptStackFrame) {
     PIT_TICK_HANDLER.get_value_unsafe()(get_args(&stack_frame));
-    pic_interrupts::PIC
+    x86_64_pic_interrupts::PIC
         .lock()
-        .send_end_of_interrupt(pic_interrupts::InterruptIndex::PitTick as u8);
+        .send_end_of_interrupt(x86_64_pic_interrupts::InterruptIndex::PitTick as u8);
 }
 
 extern "x86-interrupt" fn on_kbd_input(stack_frame: InterruptStackFrame) {
     KBD_INPUT_HANDLER.get_value_unsafe()(get_args(&stack_frame));
 
     //TODO: read scancodes through PS/2 keyboard driver
-    pic_interrupts::PIC
+    x86_64_pic_interrupts::PIC
         .lock()
-        .send_end_of_interrupt(pic_interrupts::InterruptIndex::Kbd as u8);
+        .send_end_of_interrupt(x86_64_pic_interrupts::InterruptIndex::Kbd as u8);
 }
 
 fn get_args(stack_frame: &InterruptStackFrame) -> InterruptArguments {

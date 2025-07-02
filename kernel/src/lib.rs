@@ -2,7 +2,6 @@
 #![no_main]
 
 #[allow(dead_code)]
-
 use boot_info;
 use k_corelib::log;
 use k_corelib::platform_initializer::initialize_platform;
