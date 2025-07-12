@@ -9,6 +9,7 @@ k_panic_handler = { path = "../k_panic_handler" }
 dog_essentials = { path = "../libs/dog_essentials" }
 psf = { path = "../libs/psf" }
 x86_64 = { version = "0.15.2" }
+log = "0.4.27"
 
 [profile.dev]
 panic = "abort"

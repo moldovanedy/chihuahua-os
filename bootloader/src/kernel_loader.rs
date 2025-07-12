@@ -10,7 +10,7 @@ pub fn boot_kernel(
     kernel_params: KParams,
 ) -> ! {
     unsafe {
-        // Set CR3 to new page table
+        // Set CR3 to the new page table
         Cr3::write(
             PhysFrame::containing_address(page_table_address),
             Cr3::read().1,
@@ -30,6 +30,7 @@ pub fn boot_kernel(
 
         // Far jump to kernel entry
         let entry: extern "C" fn() -> ! = {
+            //core::arch::asm!("mov rsp, {}", in(reg) 0xffff_ffff_ffef_ffff as u64);
             //dangerously set the kernel boot parameters in the rdi register (first param in SysV calling convention)
             core::arch::asm!("mov rdi, {}", in(reg) k_params_ptr);
             core::mem::transmute(entry_point)
@@ -37,11 +38,3 @@ pub fn boot_kernel(
         entry();
     };
 }
-
-// fn setup_gdt() {
-//     let mut gdt = GlobalDescriptorTable::new();
-//     let k_cs = gdt.append(Descriptor::kernel_code_segment());
-//     gdt.load();
-// 
-//     //x86_64::instructions::segmentation::CS::set_reg()
-// }

@@ -2,9 +2,19 @@ use crate::interrupts::cpu_exceptions::ExceptionType;
 use crate::interrupts::{cpu_exceptions, x86_64_pic_interrupts};
 use crate::renderer::{text_writer, Color};
 
-pub fn initialize_platform() {
-    //GDT should already be initialized, as it is inside a lazy_static
+static mut IS_INITIALIZED: bool = false;
 
+/// Initializes critical platform structures, such as GDT and IDT on x86_64, as well as PIC.
+pub fn initialize_platform() {
+    unsafe {
+        if IS_INITIALIZED {
+            return;
+        }
+
+        IS_INITIALIZED = true;
+    }
+
+    //GDT should already be initialized, as it is inside a lazy_static
     cpu_exceptions::set_handler(ExceptionType::Breakpoint, |args| {
         text_writer::write(
             b"Breakpoint: ",

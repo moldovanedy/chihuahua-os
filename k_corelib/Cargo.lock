@@ -33,6 +33,7 @@ dependencies = [
  "boot_info",
  "dog_essentials",
  "k_panic_handler",
+ "log",
  "psf",
  "x86_64",
 ]
@@ -49,6 +50,12 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin",
 ]
+
+[[package]]
+name = "log"
+version = "0.4.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "psf"

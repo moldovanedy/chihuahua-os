@@ -2,7 +2,6 @@
 #![no_main]
 
 #[allow(dead_code)]
-
 use crate::sys_config_reader::SystemConfig;
 use boot_info::memory_map::MemoryMapEntry;
 use log::{error, info, warn};
@@ -13,12 +12,14 @@ use uefi::{
     proto::console::gop::{self, GraphicsOutput},
 };
 use x86_64;
+use crate::paging::PageTableInfo;
 
-mod efi_mem_map;
 mod graphics_config;
 mod kernel_loader;
 mod kernel_reader;
 mod paging;
+mod phys_memory_map;
+mod raw_mem_map;
 mod sys_config_reader;
 
 fn panic_fn(err: uefi::Error) -> ! {
@@ -80,26 +81,35 @@ fn main() -> Status {
 
     //let _ = draw_test();
 
-    let efi_map_addr: Option<u64> = efi_mem_map::alloc_memory_for_efi_map();
-    if efi_map_addr.is_none() {
-        error!("Error finding memory for the EFI memory map.");
-        panic_fn_str("EFI_MMAP_ERROR")
+    //here we don't need the updated map, just a sorted one, so we can determine the RAM size
+    let mut mem_map = mem_map;
+    mem_map.sort();
+    let pmm_sections_array: u64 = phys_memory_map::allocate_memory_for_pmm(&mem_map);
+
+    let mem_map: MemoryMapOwned = get_efi_mmap();
+    let raw_mem_map_result: Option<(u64, u32)> = raw_mem_map::alloc_memory_for_map(&mem_map);
+    if raw_mem_map_result.is_none() {
+        error!("Error finding memory for the direct memory map.");
+        panic_fn_str("RAW_MEM_MAP_ERROR");
     }
 
-    let efi_mmap_addr: u64 = efi_map_addr.unwrap();
+    let raw_mem_map_result: (u64, u32) = raw_mem_map_result.unwrap();
+    let raw_mem_map_addr: u64 = raw_mem_map_result.0;
+    let raw_mem_map_page_count: u32 = raw_mem_map_result.1;
     let mem_map: MemoryMapOwned = get_efi_mmap();
 
-    let page_table_addr: Option<u64> = paging::setup_paging(
+    let page_table_info: Option<PageTableInfo> = paging::setup_paging(
         &mem_map,
-        get_gop().frame_buffer(),
+        &mut get_gop().frame_buffer(),
         k_physical_address,
-        efi_mmap_addr,
+        raw_mem_map_addr,
+        pmm_sections_array,
     );
-    if page_table_addr.is_none() {
+    if page_table_info.is_none() {
         panic_fn_str("MEMORY_PAGING_NOT_MAPPED");
     }
 
-    let page_table_addr: u64 = page_table_addr.unwrap();
+    let page_table_info: PageTableInfo = page_table_info.unwrap();
 
     info!("Paging enabled");
 
@@ -109,10 +119,17 @@ fn main() -> Status {
             boot::exit_boot_services(Some(MemoryType::LOADER_DATA));
 
         final_mem_map.sort();
-        let mut efi_writer = efi_mmap_addr as *mut MemoryMapEntry;
+        let mut map_writer = raw_mem_map_addr as *mut MemoryMapEntry;
 
         for entry in final_mem_map.entries() {
-            *efi_writer = MemoryMapEntry::new(
+            //the EFI memory map now has so many additional entries (even with that +10 "safe zone"),
+            //that we can no longer give all the necessary information
+            if mem_map_size >= raw_mem_map_page_count * 0x1000 {
+                error!("Error: EFI memory map is suddenly larger than expected for the direct memory map.");
+                panic_fn_str("EFI_MEM_MAP_UNEXPECTEDLY_LARGE");
+            }
+            
+            *map_writer = MemoryMapEntry::new(
                 boot_info::memory_map::MemoryType::from(entry.ty.0),
                 entry.att.bits(),
                 entry.phys_start,
@@ -120,7 +137,7 @@ fn main() -> Status {
                 entry.page_count,
             );
 
-            efi_writer = efi_writer.add(1);
+            map_writer = map_writer.add(1);
             mem_map_size += 40;
         }
     }
@@ -128,10 +145,11 @@ fn main() -> Status {
     let k_params = boot_info::KParams {
         fb_data,
         memory_map_size: mem_map_size,
+        page_table_size: page_table_info.size(),
     };
     kernel_loader::boot_kernel(
         k_entry_point,
-        x86_64::PhysAddr::new(page_table_addr),
+        x86_64::PhysAddr::new(page_table_info.phys_addr()),
         k_params,
     );
 }
