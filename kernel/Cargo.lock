@@ -33,8 +33,8 @@ dependencies = [
  "boot_info",
  "dog_essentials",
  "k_panic_handler",
- "log",
  "psf",
+ "r-efi",
  "x86_64",
 ]
 
@@ -47,6 +47,7 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "boot_info",
+ "dog_essentials",
  "k_corelib",
 ]
 
@@ -60,17 +61,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "log"
-version = "0.4.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
-
-[[package]]
 name = "psf"
 version = "0.1.0"
 dependencies = [
  "dog_essentials",
 ]
+
+[[package]]
+name = "r-efi"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rustversion"

@@ -122,6 +122,7 @@ extern "x86-interrupt" fn on_page_fault(
     _error_code: PageFaultErrorCode,
 ) {
     PAGE_FAULT_HANDLER.get_value_unsafe()(get_args(&stack_frame));
+    panic!("Page fault!");
 }
 
 extern "x86-interrupt" fn on_simd_fpe(stack_frame: InterruptStackFrame) {

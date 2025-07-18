@@ -1,9 +1,9 @@
 #![no_std]
 #![no_main]
 
-#[allow(dead_code)]
-use crate::sys_config_reader::SystemConfig;
+use crate::paging::PageTableInfo;
 use boot_info::memory_map::MemoryMapEntry;
+use core::ptr::NonNull;
 use log::{error, info, warn};
 use uefi::mem::memory_map::{MemoryMap, MemoryMapMut, MemoryMapOwned};
 use uefi::{
@@ -12,7 +12,9 @@ use uefi::{
     proto::console::gop::{self, GraphicsOutput},
 };
 use x86_64;
-use crate::paging::PageTableInfo;
+
+#[allow(dead_code)]
+use crate::sys_config_reader::SystemConfig;
 
 mod graphics_config;
 mod kernel_loader;
@@ -125,10 +127,12 @@ fn main() -> Status {
             //the EFI memory map now has so many additional entries (even with that +10 "safe zone"),
             //that we can no longer give all the necessary information
             if mem_map_size >= raw_mem_map_page_count * 0x1000 {
-                error!("Error: EFI memory map is suddenly larger than expected for the direct memory map.");
+                error!(
+                    "Error: EFI memory map is suddenly larger than expected for the direct memory map."
+                );
                 panic_fn_str("EFI_MEM_MAP_UNEXPECTEDLY_LARGE");
             }
-            
+
             *map_writer = MemoryMapEntry::new(
                 boot_info::memory_map::MemoryType::from(entry.ty.0),
                 entry.att.bits(),
@@ -142,10 +146,24 @@ fn main() -> Status {
         }
     }
 
+    let efi_sys_table = uefi::table::system_table_raw();
+    if efi_sys_table.is_none() {
+        error!("Error: EFI system table was not found.");
+        panic_fn_str("EFI_SYS_TABLE_NOT_FOUND");
+    }
+
+    let mut efi_rs_addr: u64 = 0;
+    let efi_sys_table = efi_sys_table.unwrap();
+    unsafe {
+        let efi_sys_table = efi_sys_table.read_unaligned();
+        efi_rs_addr = efi_sys_table.runtime_services as u64;
+    }
+
     let k_params = boot_info::KParams {
         fb_data,
         memory_map_size: mem_map_size,
-        page_table_size: page_table_info.size(),
+        page_table_num_entries: page_table_info.num_entries(),
+        uefi_rs_phys_addr: efi_rs_addr,
     };
     kernel_loader::boot_kernel(
         k_entry_point,

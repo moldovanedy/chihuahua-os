@@ -23,7 +23,10 @@ pub extern "C" fn kmain(k_params: *const boot_info::KParams) -> ! {
     platform_initializer::initialize_platform();
 
     unsafe {
-        vmm::init((*k_params).memory_map_size, (*k_params).page_table_size);
+        vmm::init(
+            (*k_params).memory_map_size,
+            (*k_params).page_table_num_entries,
+        );
         text_writer::write(b"Setup memory.\n", fg_col, bg_col);
     }
 
@@ -44,6 +47,7 @@ pub extern "C" fn kmain(k_params: *const boot_info::KParams) -> ! {
 
     loop {
         unsafe {
+            core::arch::asm!("cli");
             core::arch::asm!("hlt");
         }
     }

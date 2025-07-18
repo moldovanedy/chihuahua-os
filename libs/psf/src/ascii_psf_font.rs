@@ -107,10 +107,10 @@ impl AsciiPsfFont {
         let all_glyphs_offset: u64 = self.base_addr + self.header_size as u64;
         let glyph_offset: u64 = all_glyphs_offset
             + (if code_point < self.num_glyphs {
-                code_point
-            } else {
-                0
-            } * self.bytes_per_glyph) as u64;
+            code_point
+        } else {
+            0
+        } * self.bytes_per_glyph) as u64;
 
         return glyph_offset as *const u8;
     }

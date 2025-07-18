@@ -1,6 +1,10 @@
 use crate::log;
 use boot_info::memory_map::{MemoryMapEntry, MemoryType};
 use core::ptr;
+use core::sync::atomic::{AtomicU64, Ordering};
+use dog_essentials::static_cell::StaticCell;
+
+static PHYS_MEMORY_USED: StaticCell<AtomicU64> = StaticCell::new(AtomicU64::new(0));
 
 pub(crate) struct PageFrameAllocator {
     /// The level where the allocation remained.
@@ -13,17 +17,24 @@ pub(crate) struct PageFrameAllocator {
     virt_addresses_for_superior_bitmaps: [u64; 4],
     /// The indices for this page. Starts at the index in L1 (not used) and ends at the index for L5.
     bitmap_indices: [u8; 5],
+    /// The physical address of the last allocated frame.
+    last_allocated_frame_phys_addr: u64,
 }
 
 impl PageFrameAllocator {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             last_level: 5,
             last_index: 0,
             last_bitmap_virt_addr: 0,
             virt_addresses_for_superior_bitmaps: [0; 4],
             bitmap_indices: [255; 5],
+            last_allocated_frame_phys_addr: 0,
         }
+    }
+
+    pub(crate) fn get_last_allocated_frame_phys_addr(&self) -> u64 {
+        self.last_allocated_frame_phys_addr
     }
 
     pub(crate) fn mark_page_free(phys_addr: u64) {
@@ -42,6 +53,10 @@ impl PageFrameAllocator {
         let l1_virt_addr: u64 = l2_virt_addr + 8 + (l2_index * 8);
 
         let l1_index: u64 = indices[0];
+
+        PHYS_MEMORY_USED
+            .get_value_unsafe()
+            .fetch_sub(0x1000, Ordering::SeqCst);
 
         unsafe {
             //set the corresponding bit, then check if the bitmap is full; if it's not, return early;
@@ -65,7 +80,9 @@ impl PageFrameAllocator {
         }
     }
 
-    pub(crate) fn get_continuous_frames(&self, num_frames: u64) -> Option<u64> {
+    /// Will return an option for the physical address of a continuous chunk of memory at
+    /// the specified address, being the size of num_frames. Will also mark that region as used.
+    pub(crate) fn get_continuous_frames(num_frames: u64) -> Option<u64> {
         let mut indices: [u8; 5] = [255; 5];
         let mut needed_frames = num_frames;
 
@@ -212,7 +229,7 @@ impl PageFrameAllocator {
 
                 //we ran out of L1 frames, but there might be more on the next L1 frames, so continue
                 true
-            }
+            };
         }
     }
 
@@ -230,6 +247,10 @@ impl PageFrameAllocator {
         let l1_virt_addr: u64 = l2_virt_addr + 8 + (l2_index * 8); //jumps of 8 B
 
         let l1_index: u64 = self.bitmap_indices[0] as u64;
+
+        PHYS_MEMORY_USED
+            .get_value_unsafe()
+            .fetch_add(0x1000, Ordering::SeqCst);
 
         //set the corresponding bit, then check if the bitmap is full; if it's not, return early;
         //otherwise, we need to go to the higher bitmap
@@ -266,93 +287,87 @@ impl Iterator for PageFrameAllocator {
         while self.last_level >= 1 {
             match self.last_level {
                 5 => {
-                    for i in self.last_index..64 {
-                        let l4_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
-                            current_level: 5,
-                            idx_in_bitmap: i as u8,
-                            bitmap_virt_addr: self.last_bitmap_virt_addr,
-                        });
+                    let idx = self.last_index as u8;
+                    let l4_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
+                        current_level: 5,
+                        idx_in_bitmap: idx,
+                        bitmap_virt_addr: boot_info::PHYS_BITMAP_MANAGER_ADDRESS,
+                    });
 
-                        if l4_virt_addr == 0 {
-                            //no more memory
-                            return None;
-                        } else {
-                            self.last_level -= 1;
-                            self.last_index = 0;
-                            self.bitmap_indices[4] = i as u8;
-                            self.last_bitmap_virt_addr = l4_virt_addr;
-                        }
+                    if l4_virt_addr == 0 {
+                        //no more memory
+                        return None;
+                    } else {
+                        self.last_level -= 1;
+                        self.last_index = 0;
+                        self.bitmap_indices[4] = idx;
+                        self.last_bitmap_virt_addr = l4_virt_addr;
                     }
                 }
                 4 => {
                     self.virt_addresses_for_superior_bitmaps[3] = self.last_bitmap_virt_addr;
 
-                    for i in self.last_index..64 {
-                        let l3_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
-                            current_level: 4,
-                            idx_in_bitmap: i as u8,
-                            bitmap_virt_addr: self.last_bitmap_virt_addr,
-                        });
+                    let idx = self.last_index as u8;
+                    let l3_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
+                        current_level: 4,
+                        idx_in_bitmap: idx,
+                        bitmap_virt_addr: self.last_bitmap_virt_addr,
+                    });
 
-                        if l3_virt_addr == 0 {
-                            //this L4 exhausted, go to L5 for the next free L4
-                            self.last_level += 1;
-                            self.last_index = 0;
-                            self.last_bitmap_virt_addr = 0;
-                        } else {
-                            self.last_level -= 1;
-                            self.last_index = 0;
-                            self.bitmap_indices[3] = i as u8;
-                            self.last_bitmap_virt_addr = l3_virt_addr;
-                        }
+                    if l3_virt_addr == 0 {
+                        //this L4 exhausted, go to L5 for the next free L4
+                        self.last_level += 1;
+                        self.last_index = 0;
+                        self.last_bitmap_virt_addr = 0;
+                    } else {
+                        self.last_level -= 1;
+                        self.last_index = 0;
+                        self.bitmap_indices[3] = idx;
+                        self.last_bitmap_virt_addr = l3_virt_addr;
                     }
                 }
                 3 => {
                     self.virt_addresses_for_superior_bitmaps[2] = self.last_bitmap_virt_addr;
 
-                    for i in self.last_index..64 {
-                        let l2_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
-                            current_level: 3,
-                            idx_in_bitmap: i as u8,
-                            bitmap_virt_addr: self.last_bitmap_virt_addr,
-                        });
+                    let idx = self.last_index as u8;
+                    let l2_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
+                        current_level: 3,
+                        idx_in_bitmap: idx,
+                        bitmap_virt_addr: self.last_bitmap_virt_addr,
+                    });
 
-                        if l2_virt_addr == 0 {
-                            //this L3 exhausted, go to L4 for the next free L3
-                            self.last_level += 1;
-                            self.last_index = 0;
-                            self.last_bitmap_virt_addr =
-                                self.virt_addresses_for_superior_bitmaps[3];
-                        } else {
-                            self.last_level -= 1;
-                            self.last_index = 0;
-                            self.bitmap_indices[2] = i as u8;
-                            self.last_bitmap_virt_addr = l2_virt_addr;
-                        }
+                    if l2_virt_addr == 0 {
+                        //this L3 exhausted, go to L4 for the next free L3
+                        self.last_level += 1;
+                        self.last_index = 0;
+                        self.last_bitmap_virt_addr = self.virt_addresses_for_superior_bitmaps[3];
+                    } else {
+                        self.last_level -= 1;
+                        self.last_index = 0;
+                        self.bitmap_indices[2] = idx;
+                        self.last_bitmap_virt_addr = l2_virt_addr;
                     }
                 }
                 2 => {
                     self.virt_addresses_for_superior_bitmaps[1] = self.last_bitmap_virt_addr;
 
-                    for i in self.last_index..64 {
-                        let l1_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
-                            current_level: 2,
-                            idx_in_bitmap: i as u8,
-                            bitmap_virt_addr: self.last_bitmap_virt_addr,
-                        });
+                    let idx = self.last_index as u8;
+                    let l1_virt_addr: u64 = get_next_free_table(&FrameDataResumed {
+                        current_level: 2,
+                        idx_in_bitmap: idx,
+                        bitmap_virt_addr: self.last_bitmap_virt_addr,
+                    });
 
-                        if l1_virt_addr == 0 {
-                            //this L2 exhausted, go to L3 for the next free L2
-                            self.last_level += 1;
-                            self.last_index = 0;
-                            self.last_bitmap_virt_addr =
-                                self.virt_addresses_for_superior_bitmaps[2];
-                        } else {
-                            self.last_level -= 1;
-                            self.last_index = 0;
-                            self.bitmap_indices[1] = i as u8;
-                            self.last_bitmap_virt_addr = l1_virt_addr;
-                        }
+                    if l1_virt_addr == 0 {
+                        //this L2 exhausted, go to L3 for the next free L2
+                        self.last_level += 1;
+                        self.last_index = 0;
+                        self.last_bitmap_virt_addr = self.virt_addresses_for_superior_bitmaps[2];
+                    } else {
+                        self.last_level -= 1;
+                        self.last_index = 0;
+                        self.bitmap_indices[1] = idx;
+                        self.last_bitmap_virt_addr = l1_virt_addr;
                     }
                 }
                 1 => {
@@ -376,6 +391,7 @@ impl Iterator for PageFrameAllocator {
 
                                 self.bitmap_indices[0] = i as u8;
                                 self.mark_page_used();
+                                self.last_allocated_frame_phys_addr = page_frame_phys_addr;
                                 return Some(page_frame_phys_addr);
                             }
                         }
@@ -407,6 +423,10 @@ struct FrameDataResumed {
     bitmap_virt_addr: u64,
 }
 
+pub(super) fn get_phys_memory_used() -> u64 {
+    PHYS_MEMORY_USED.get_value_unsafe().load(Ordering::SeqCst)
+}
+
 pub(super) fn init_from_mem_map(mem_map_size: u32) {
     if mem_map_size as usize % size_of::<MemoryMapEntry>() != 0 {
         log::log_error("PMM: mem map is not aligned");
@@ -419,6 +439,13 @@ pub(super) fn init_from_mem_map(mem_map_size: u32) {
             let data_ptr: *const MemoryMapEntry =
                 (boot_info::MEM_MAP_VIRTUAL_ADDRESS as *const MemoryMapEntry).add(i);
             let data = ptr::read_unaligned(data_ptr);
+
+            //set the area under 16 KiB as occupied, we don't want to use it
+            if data.physical_addr() < 0x4000 {
+                for j in 0..4 {
+                    mark_page_used(data.physical_addr() + j * 0x1000);
+                }
+            }
 
             if data.mem_type() != MemoryType::Conventional
                 && data.mem_type() != MemoryType::BootServicesCode
@@ -433,9 +460,8 @@ pub(super) fn init_from_mem_map(mem_map_size: u32) {
 
     //get the last entry again to mark the bitmap as "used" for unmapped pages (larger than RAM)
     unsafe {
-        let data_ptr: *const MemoryMapEntry = (boot_info::MEM_MAP_VIRTUAL_ADDRESS
-            as *const MemoryMapEntry)
-            .add(num_entries - 1);
+        let data_ptr: *const MemoryMapEntry =
+            (boot_info::MEM_MAP_VIRTUAL_ADDRESS as *const MemoryMapEntry).add(num_entries - 1);
         let data = ptr::read_unaligned(data_ptr);
 
         let phys_addr: u64 = data.physical_addr() + (data.num_pages() - 1) * 0x1000;
@@ -467,6 +493,7 @@ pub(super) fn init_from_mem_map(mem_map_size: u32) {
 fn get_next_free_table(superior_level_resume_data: &FrameDataResumed) -> u64 {
     unsafe {
         let bitmap: u64 = *(superior_level_resume_data.bitmap_virt_addr as *const u64);
+
         for i in superior_level_resume_data.idx_in_bitmap..64 {
             if (bitmap & (1 << i)) == 0 {
                 return match superior_level_resume_data.current_level {
@@ -503,6 +530,10 @@ fn mark_page_used(phys_addr: u64) {
     let l1_virt_addr: u64 = l2_virt_addr + 8 + (l2_index * 8);
 
     let l1_index: u64 = indices[0];
+
+    PHYS_MEMORY_USED
+        .get_value_unsafe()
+        .fetch_add(0x1000, Ordering::SeqCst);
 
     //set the corresponding bit, then check if the bitmap is full; if it's not, return early;
     //otherwise, we need to go to the higher bitmap

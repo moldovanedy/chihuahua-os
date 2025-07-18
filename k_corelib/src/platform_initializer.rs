@@ -1,6 +1,6 @@
 use crate::interrupts::cpu_exceptions::ExceptionType;
 use crate::interrupts::{cpu_exceptions, x86_64_pic_interrupts};
-use crate::renderer::{text_writer, Color};
+use crate::renderer::{Color, text_writer};
 
 static mut IS_INITIALIZED: bool = false;
 
