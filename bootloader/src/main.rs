@@ -46,7 +46,6 @@ fn main() -> Status {
     info!("Starting boot proces...");
 
     let mem_map: MemoryMapOwned = get_efi_mmap();
-
     let config: SystemConfig = sys_config_reader::read_config().unwrap_or(SystemConfig::default());
 
     let k_load_data: Option<(u64, u64)> = kernel_reader::read_kernel(&mem_map);
@@ -113,13 +112,13 @@ fn main() -> Status {
 
     let page_table_info: PageTableInfo = page_table_info.unwrap();
 
-    info!("Paging enabled");
+    info!("Paging setup complete");
 
     let mut mem_map_size: u32 = 0;
     unsafe {
         let mut final_mem_map: MemoryMapOwned =
             boot::exit_boot_services(Some(MemoryType::LOADER_DATA));
-
+        
         final_mem_map.sort();
         let mut map_writer = raw_mem_map_addr as *mut MemoryMapEntry;
 

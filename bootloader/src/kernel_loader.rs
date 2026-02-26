@@ -31,7 +31,9 @@ pub fn boot_kernel(
         // Far jump to kernel entry
         let entry: extern "C" fn() -> ! = {
             //core::arch::asm!("mov rsp, {}", in(reg) 0xffff_ffff_ffef_ffff as u64);
-            //dangerously set the kernel boot parameters in the rdi register (first param in SysV calling convention)
+
+            //dangerously set the kernel boot parameters in the rdi register (first param
+            // in SysV calling convention)
             core::arch::asm!("mov rdi, {}", in(reg) k_params_ptr);
             core::mem::transmute(entry_point)
         };

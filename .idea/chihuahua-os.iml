@@ -11,6 +11,7 @@
       <sourceFolder url="file://$MODULE_DIR$/libs/psf/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/k_panic_handler/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/libs/uefi_rs_util/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/libs/paginator/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/boot_info/target" />
       <excludeFolder url="file://$MODULE_DIR$/bootloader/target" />
       <excludeFolder url="file://$MODULE_DIR$/k_corelib/target" />
@@ -20,6 +21,7 @@
       <excludeFolder url="file://$MODULE_DIR$/libs/psf/target" />
       <excludeFolder url="file://$MODULE_DIR$/k_panic_handler/target" />
       <excludeFolder url="file://$MODULE_DIR$/libs/uefi_rs_util/target" />
+      <excludeFolder url="file://$MODULE_DIR$/libs/paginator/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

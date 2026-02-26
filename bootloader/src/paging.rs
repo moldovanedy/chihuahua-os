@@ -4,11 +4,8 @@ use log::{error, info};
 use uefi::boot::{self, AllocateType, MemoryType};
 use uefi::mem::memory_map::{self, MemoryMap};
 use uefi::proto::console::gop;
-use x86_64::structures::paging::mapper::{MapToError, MapperFlush};
-use x86_64::structures::paging::page_table::PageTable;
-use x86_64::structures::paging::{
-    FrameAllocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB,
-};
+use x86_64::structures::paging::page_table::{PageTable, PageTableEntry};
+use x86_64::structures::paging::{FrameAllocator, Page, PageTableFlags, PhysFrame, Size4KiB};
 
 const KERNEL_SIZE: u64 = 0x100000;
 const MEM_MAP_NEEDED_PAGES: u64 = 16;
@@ -30,7 +27,7 @@ impl PageTableInfo {
     }
 }
 
-///Returns an option for the page table info.
+/// Returns an option for the page table info.
 pub fn setup_paging(
     mem_map: &memory_map::MemoryMapOwned,
     gop_fb: &mut gop::FrameBuffer,
@@ -38,57 +35,52 @@ pub fn setup_paging(
     raw_mem_map_physical_address: u64,
     pmm_sections_array: u64,
 ) -> Option<PageTableInfo> {
-    let num_entries: usize = calculate_page_table_entries(gop_fb, pmm_sections_array);
-    let needed_pages: usize = (num_entries + 511) / 512;
+    // let num_entries: usize = calculate_page_table_entries(gop_fb, pmm_sections_array);
+    // let needed_pages: usize = (num_entries + 511) / 512;
 
-    let page_table_ptr: uefi::Result<NonNull<u8>> = boot::allocate_pages(
-        AllocateType::AnyPages,
-        MemoryType::LOADER_DATA,
-        needed_pages,
-    );
-    if page_table_ptr.is_err() {
-        let err_msg: uefi::Error = page_table_ptr.err().unwrap();
-        error!("Error setting up paging: {err_msg}");
-        return None;
-    }
-
-    let page_table_ptr: NonNull<u8> = page_table_ptr.unwrap();
+    let page_table_ptr: NonNull<u8> = match allocate_pages(1) {
+        Ok(ptr) => ptr,
+        Err(err_msg) => {
+            error!("Error setting up paging: {err_msg}");
+            return None;
+        }
+    };
     let page_table: *mut PageTable = page_table_ptr.as_ptr() as *mut PageTable;
 
     unsafe {
         (*page_table).zero();
-        (*(page_table.add(1))).zero();
-        (*(page_table.add(2))).zero();
-        (*(page_table.add(3))).zero();
-        (*(page_table.add(4))).zero();
+
+        let p4_frame =
+            PhysFrame::containing_address(x86_64::PhysAddr::new(page_table as *const _ as u64));
+        (&mut *page_table)[510]
+            .set_frame(p4_frame, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
     }
 
-    let mut mapper: OffsetPageTable<'_> =
-        unsafe { OffsetPageTable::new(&mut *page_table, x86_64::VirtAddr::new(0)) };
-    let mut frame_allocator = UefiFrameAllocator {};
+    let mut mapper = ManualMapper::new(page_table);
 
-    let success: bool = mmap_kernel(k_physical_address, page_table);
+    let success: bool = mmap_kernel(k_physical_address, &mut mapper);
     if !success {
         return None;
     }
 
-    let success: bool = mmap_gop(gop_fb, page_table);
+    let success: bool = mmap_gop(gop_fb, &mut mapper);
     if !success {
         return None;
     }
 
-    let success: bool = mmap_raw_mem_map(raw_mem_map_physical_address, page_table);
+    let success: bool = mmap_raw_mem_map(raw_mem_map_physical_address, &mut mapper);
     if !success {
         return None;
     }
 
-    let success: bool = mmap_pmm_sections(pmm_sections_array, page_table);
+    let success: bool = mmap_pmm_sections(pmm_sections_array, &mut mapper);
     if !success {
         return None;
     }
 
     //map the page tables themselves, so we can access them from the kernel
-    for i in 0..needed_pages as u64 {
+    // for i in 0..num_entries as u64 {
+    for i in 0..1u64 {
         let frame: PhysFrame = PhysFrame::containing_address(x86_64::PhysAddr::new(
             page_table_ptr.as_ptr() as u64 + i * 0x1000,
         ));
@@ -97,15 +89,10 @@ pub fn setup_paging(
             boot_info::PAGE_TABLES_ADDRESS + i * 0x1000,
         ));
 
-        unsafe {
-            let mapper_flush: Result<MapperFlush<Size4KiB>, MapToError<Size4KiB>> =
-                mapper.map_to(page, frame, flags, &mut frame_allocator);
-            if mapper_flush.is_err() {
-                error!("Error mapping a the page tables themselves.");
-                return None;
-            }
-
-            mapper_flush.unwrap().flush();
+        let success = mapper.map_to(page, frame, flags);
+        if !success {
+            error!("Error mapping a the page tables themselves.");
+            return None;
         }
     }
 
@@ -120,31 +107,25 @@ pub fn setup_paging(
                 map_entry.phys_start + i * 0x1000,
             ));
             let flags: PageTableFlags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+            let page: Page =
+                Page::containing_address(x86_64::VirtAddr::new(map_entry.phys_start + i * 0x1000));
 
-            unsafe {
-                let mapper_flush: Result<MapperFlush<Size4KiB>, MapToError<Size4KiB>> =
-                    mapper.identity_map(frame, flags, &mut frame_allocator);
-                if mapper_flush.is_err() {
-                    error!("Error mapping a physical page to kernel memory.");
-                    return None;
-                }
-
-                mapper_flush.unwrap().flush();
+            let success = mapper.map_to(page, frame, flags);
+            if !success {
+                error!("Error mapping the identity map.");
+                return None;
             }
         }
     }
 
     return Some(PageTableInfo {
         phys_addr: page_table_ptr.as_ptr() as u64,
-        num_entries: num_entries as u64,
+        // num_entries: num_entries as u64,
+        num_entries: 1u64,
     });
 }
 
-fn mmap_kernel(k_physical_address: u64, page_table: *mut PageTable) -> bool {
-    let mut mapper: OffsetPageTable<'_> =
-        unsafe { OffsetPageTable::new(&mut *page_table, x86_64::VirtAddr::new(0)) };
-    let mut frame_allocator = UefiFrameAllocator {};
-
+fn mmap_kernel(k_physical_address: u64, mapper: &mut ManualMapper) -> bool {
     //1 MiB
     let mut needed_memory: u64 = KERNEL_SIZE;
     let mut i: u64 = 0;
@@ -157,15 +138,10 @@ fn mmap_kernel(k_physical_address: u64, page_table: *mut PageTable) -> bool {
             boot_info::KERNEL_VIRTUAL_ADDRESS + i * 0x1000,
         ));
 
-        unsafe {
-            let mapper_flush: Result<MapperFlush<Size4KiB>, MapToError<Size4KiB>> =
-                mapper.map_to(page, frame, flags, &mut frame_allocator);
-            if mapper_flush.is_err() {
-                error!("Error mapping a physical page to kernel memory.");
-                return false;
-            }
-
-            mapper_flush.unwrap().flush();
+        let success = mapper.map_to(page, frame, flags);
+        if !success {
+            error!("Error mapping a physical page to kernel memory.");
+            return false;
         }
 
         needed_memory -= 0x1000;
@@ -175,11 +151,7 @@ fn mmap_kernel(k_physical_address: u64, page_table: *mut PageTable) -> bool {
     return true;
 }
 
-fn mmap_gop(mut gop_fb: &mut gop::FrameBuffer, page_table: *mut PageTable) -> bool {
-    let mut mapper: OffsetPageTable<'_> =
-        unsafe { OffsetPageTable::new(&mut *page_table, x86_64::VirtAddr::new(0)) };
-    let mut frame_allocator = UefiFrameAllocator {};
-
+fn mmap_gop(gop_fb: &mut gop::FrameBuffer, mapper: &mut ManualMapper) -> bool {
     let mut needed_memory: u64 = gop_fb.size() as u64;
     let base_physical_address: u64 = gop_fb.as_mut_ptr() as u64;
 
@@ -194,15 +166,10 @@ fn mmap_gop(mut gop_fb: &mut gop::FrameBuffer, page_table: *mut PageTable) -> bo
             boot_info::GOP_VIRTUAL_ADDRESS + i * 0x1000,
         ));
 
-        unsafe {
-            let mapper_flush: Result<MapperFlush<Size4KiB>, MapToError<Size4KiB>> =
-                mapper.map_to(page, frame, flags, &mut frame_allocator);
-            if mapper_flush.is_err() {
-                error!("Error mapping a physical page to GOP memory.");
-                return false;
-            }
-
-            mapper_flush.unwrap().flush();
+        let success = mapper.map_to(page, frame, flags);
+        if !success {
+            error!("Error mapping a physical page to GOP memory.");
+            return false;
         }
 
         needed_memory -= 0x1000;
@@ -218,11 +185,7 @@ fn mmap_gop(mut gop_fb: &mut gop::FrameBuffer, page_table: *mut PageTable) -> bo
     return true;
 }
 
-fn mmap_raw_mem_map(efi_mmap_phys_addr: u64, page_table: *mut PageTable) -> bool {
-    let mut mapper: OffsetPageTable<'_> =
-        unsafe { OffsetPageTable::new(&mut *page_table, x86_64::VirtAddr::new(0)) };
-    let mut frame_allocator = UefiFrameAllocator {};
-
+fn mmap_raw_mem_map(efi_mmap_phys_addr: u64, mapper: &mut ManualMapper) -> bool {
     for i in 0..MEM_MAP_NEEDED_PAGES {
         let frame: PhysFrame =
             PhysFrame::containing_address(x86_64::PhysAddr::new(efi_mmap_phys_addr + i * 0x1000));
@@ -231,26 +194,17 @@ fn mmap_raw_mem_map(efi_mmap_phys_addr: u64, page_table: *mut PageTable) -> bool
             boot_info::MEM_MAP_VIRTUAL_ADDRESS + i * 0x1000,
         ));
 
-        unsafe {
-            let mapper_flush: Result<MapperFlush<Size4KiB>, MapToError<Size4KiB>> =
-                mapper.map_to(page, frame, flags, &mut frame_allocator);
-            if mapper_flush.is_err() {
-                error!("Error mapping the direct memory map.");
-                return false;
-            }
-
-            mapper_flush.unwrap().flush();
+        let success = mapper.map_to(page, frame, flags);
+        if !success {
+            error!("Error mapping the direct memory map.");
+            return false;
         }
     }
 
     return true;
 }
 
-fn mmap_pmm_sections(pmm_sections_array: u64, page_table: *mut PageTable) -> bool {
-    let mut mapper: OffsetPageTable<'_> =
-        unsafe { OffsetPageTable::new(&mut *page_table, x86_64::VirtAddr::new(0)) };
-    let mut frame_allocator = UefiFrameAllocator {};
-
+fn mmap_pmm_sections(pmm_sections_array: u64, mapper: &mut ManualMapper) -> bool {
     let mut i: u32 = 0;
     let mut array_ptr: *mut u64 = pmm_sections_array as *mut u64;
 
@@ -270,14 +224,11 @@ fn mmap_pmm_sections(pmm_sections_array: u64, page_table: *mut PageTable) -> boo
                 let flags: PageTableFlags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
                 let page: Page = Page::containing_address(x86_64::VirtAddr::new(virt_addr));
 
-                let mapper_flush: Result<MapperFlush<Size4KiB>, MapToError<Size4KiB>> =
-                    mapper.map_to(page, frame, flags, &mut frame_allocator);
-                if mapper_flush.is_err() {
+                let success = mapper.map_to(page, frame, flags);
+                if !success {
                     error!("Error mapping the PMM sections.");
                     return false;
                 }
-
-                mapper_flush.unwrap().flush();
             }
 
             i += 1;
@@ -318,6 +269,72 @@ fn calculate_page_table_entries(gop_fb: &mut gop::FrameBuffer, pmm_sections_arra
 
     //each page table section holds information about 512 frames (4096 / 8)
     return page_count as usize;
+}
+
+fn allocate_pages(needed_pages: usize) -> Result<NonNull<u8>, uefi::Error> {
+    boot::allocate_pages(
+        AllocateType::AnyPages,
+        MemoryType::LOADER_DATA,
+        needed_pages,
+    )
+}
+
+struct ManualMapper {
+    p4: *mut PageTable,
+    frame_allocator: UefiFrameAllocator,
+}
+
+impl ManualMapper {
+    fn new(p4: *mut PageTable) -> Self {
+        Self {
+            p4,
+            frame_allocator: UefiFrameAllocator {},
+        }
+    }
+
+    fn map_to(&mut self, page: Page, frame: PhysFrame, flags: PageTableFlags) -> bool {
+        let p4 = unsafe { &mut *self.p4 };
+
+        let p3_idx = page.start_address().p4_index();
+        let p3 = match Self::get_or_create_table(&mut self.frame_allocator, &mut p4[p3_idx]) {
+            Some(table) => table,
+            None => return false,
+        };
+
+        let p2_idx = page.start_address().p3_index();
+        let p2 = match Self::get_or_create_table(&mut self.frame_allocator, &mut p3[p2_idx]) {
+            Some(table) => table,
+            None => return false,
+        };
+
+        let p1_idx = page.start_address().p2_index();
+        let p1 = match Self::get_or_create_table(&mut self.frame_allocator, &mut p2[p1_idx]) {
+            Some(table) => table,
+            None => return false,
+        };
+
+        let p1_idx = page.start_address().p1_index();
+        p1[p1_idx].set_frame(frame, flags);
+
+        true
+    }
+
+    fn get_or_create_table(
+        allocator: &mut UefiFrameAllocator,
+        entry: &mut PageTableEntry,
+    ) -> Option<&'static mut PageTable> {
+        if entry.is_unused() {
+            let frame = allocator.allocate_frame()?;
+            let table_ptr = frame.start_address().as_u64() as *mut PageTable;
+            unsafe {
+                (*table_ptr).zero();
+            }
+            entry.set_frame(frame, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+        }
+
+        let table_ptr = entry.frame().ok()?.start_address().as_u64() as *mut PageTable;
+        Some(unsafe { &mut *table_ptr })
+    }
 }
 
 pub(crate) struct UefiFrameAllocator {}
